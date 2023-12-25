@@ -5,9 +5,9 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="mlgebra",
-    version="0.0.0",
+    version="0.0.1",
     author="Ahmet Erdem",
-    description="A Machine Learning Tool for Python, in Python",
+    description="A machine learning tool for Python, in Python",
     long_description=long_description,
     long_description_content_type="text/markdown",
     packages=setuptools.find_packages(),
@@ -18,5 +18,5 @@ setuptools.setup(
     ],
     python_requires='>=3.9',
     py_modules=["mlgebra"],
-    install_requires=["vectorgebra>=2.7.0"]
+    install_requires=["vectorgebra>=2.7.1"]
 )

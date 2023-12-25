@@ -1,0 +1,10 @@
+LICENSE.txt
+README.md
+setup.py
+mlgebra/__init__.py
+mlgebra/mlgebra.py
+mlgebra.egg-info/PKG-INFO
+mlgebra.egg-info/SOURCES.txt
+mlgebra.egg-info/dependency_links.txt
+mlgebra.egg-info/requires.txt
+mlgebra.egg-info/top_level.txt
