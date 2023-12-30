@@ -53,6 +53,12 @@ Saves the weight file of the model.
 Loads a weight file specified via "path" to the model. This operation must be done without any 
 bias or weight finalization. However, layers must be configured before using it.
 
+### _Model_.readMNIST(path1, path2, path3, path4)
+
+Reads training/test data/label of MNIST database and returns it in order. Paths are in order to 
+training data, training labels, test data, test labels. Returned objects are lists of vectors.
+They can be directly used for .singleTrain(), oru you can group them and use them in parallel.
+
 ### _Model_.finalize(generation="flat", a=-2, b=2)
 
 This method "finalizes" the model. Therefore, it should be called at the end of every other thing.

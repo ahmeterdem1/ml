@@ -86,8 +86,79 @@ class Model:
 
         logger.info(f"Weight file read at {path}")
 
-    def readMNIST(self):
-        pass
+    def readMNIST(self, path1, path2, path3, path4):
+        if not (isinstance(path1, str) or isinstance(path2, str) or isinstance(path3, str) or isinstance(path4, str)):
+            raise ArgTypeError("Must be a string.")
+        try:
+            list1 = []
+            with open(path1, "rb") as file:
+                image_header = file.read(16)
+                for k in range(60000):
+                    for count in range(1):
+                        # ALl images are processed in this loop.
+                        temp_image = []
+                        for k in range(28):
+                            temp = []
+                            for l in range(28):
+                                r = integer(file.read(1))
+                                temp.append(r)
+                            temp_image.append(Vector(*temp))
+                        list1.append(Matrix(*temp_image))
+                logger.info(f"Training set at {path1} read.")
+        except Exception as e:
+            logger.warning(f"File {path1} could not be read: {e}")
+            return
+
+        try:
+            list2 = []
+            with open(path2, "rb") as file:
+                label_header = file.read(8)
+                for k in range(60000):
+                    for l in range(1):
+                        v = Vector.zero(10, decimal=self.decimal)
+                        i = integer(file.read(1))
+                        v[i] = 1
+                        list2.append(v)
+                logger.info(f"Training labels at {path2} read.")
+        except Exception as e:
+            logger.warning(f"File {path2} could not be read: {e}")
+            return
+
+        try:
+            list3 = []
+            with open(path3, "rb") as file:
+                image_header = file.read(16)
+                for k in range(10000):
+                    for count in range(1):
+                        temp_image = []
+                        for k in range(28):
+                            temp = []
+                            for l in range(28):
+                                r = integer(file.read(1))
+                                temp.append(r)
+                            temp_image.append(Vector(*temp))
+                        list3.append(Matrix(*temp_image))
+                logger.info(f"Testing set at {path3} read.")
+        except Exception as e:
+            logger.warning(f"File {path3} could not be read: {e}")
+            return
+
+        try:
+            list4 = []
+            with open(path4, "rb") as file:
+                label_header = file.read(8)
+                for k in range(10000):
+                    for l in range(1):
+                        v = Vector.zero(10, decimal=self.decimal)
+                        i = integer(file.read(1))
+                        v[i] = 1
+                        list4.append(v)
+                logger.info(f"Testing labels at {path4} read.")
+        except Exception as e:
+            logger.warning(f"File {path4} could not be read: {e}")
+            return
+
+        return list1, list2, list3, list4
 
     def finalize(self, generation: str = "flat", a=-2, b=2):
         generation = generation.lower()
@@ -798,3 +869,5 @@ def _multiproduce(member, d, b, target, id):
         temp = member._produce(data, b)
         target[id * length + i] = temp
 
+def integer(b):
+    return int.from_bytes(b, byteorder="big")
