@@ -24,6 +24,7 @@ class Model:
             raise FileNotFoundError()
         self.name = name
         self.layers = []
+        self.layer_types = []
         self.errors = []
         self.bias = []
         self.last_output = []
@@ -39,10 +40,28 @@ class Model:
     def __str__(self):
         return (f"Model Name: {self.name}\nModel Structre: {'x'.join([str(len(k)) for k in self.layers])}\n"
                 f"Input Processing: {self.input_func}\nActivation Function: {self.activation}\n"
-                f"Output Processing: {self.output_func}\n")
+                f"Output Processing: {self.output_func}\nLayer Types: {'|'.join(self.layer_types)}")
 
-    def addDense(self, amount: int = 1):
+    def addDense(self, amount=1):
+        if not (isinstance(amount, int) or isinstance(amount, Decimal)): raise ArgTypeError("Must be an integer.")
+        if amount < 1: raise RangeError()
         self.layers.append([Node() for k in range(amount)])
+        self.layer_types.append("dense")
+
+    def addConvolution(self, generation: str = "", m=4, n=4, a=-2, b=-2):
+        if self.layer_types[-1] == "convolution": raise ConfigError("Preceding convolution layer")
+        if not isinstance(generation, str): raise ArgTypeError("Must be a string.")
+        if not ((isinstance(a, int) or isinstance(a, float) or isinstance(a, Decimal))
+                and (isinstance(b, int) or isinstance(b, float) or isinstance(b, Decimal))
+                and (isinstance(m, int)) and (isinstance(n, int))):
+            raise ArgTypeError("Must be a numerical value.")
+        if m < 1 or n < 1: raise DimensionError(1)
+
+        generation = generation.lower()
+
+        # Next layer must be another Dense layer
+
+        self.layer_types.append("convolution")
 
     def saveModel(self):
         with open(f"{self.name}.weights", "x") as file:
@@ -56,7 +75,8 @@ class Model:
                 file.write(f"{layer_count}:b:" + ",".join([str(k) for k in self.bias[layer_count + 1]]) + "\n")
                 layer_count += 1
 
-    def readWeightFile(self, path: str = ""):
+    def readWeightFile(self, path=""):
+        if not isinstance(path, str): raise ArgTypeError("Must be a string.")
         if not path.endswith(".weights"): raise FileStructureError("Incorrect extension.")
         with open(path, "r") as file:
             all = file.read()
@@ -160,7 +180,12 @@ class Model:
 
         return list1, list2, list3, list4
 
-    def finalize(self, generation: str = "flat", a=-2, b=2):
+    def finalize(self, generation="flat", a=-2, b=2):
+        if not isinstance(generation, str): raise ArgTypeError("Must be a string.")
+        if not ((isinstance(a, int) or isinstance(a, float) or isinstance(a, Decimal))
+                and (isinstance(b, int) or isinstance(b, float) or isinstance(b, Decimal))):
+            raise ArgTypeError("Must be a numerical value.")
+
         generation = generation.lower()
 
         if generation == "uxavier":
@@ -213,7 +238,12 @@ class Model:
             return
         raise ConfigError("Incorrect choice.")
 
-    def includeBias(self, generation: str = "flat", a=-2, b=2):
+    def includeBias(self, generation="flat", a=-2, b=2):
+        if not isinstance(generation, str): raise ArgTypeError("Must be a string.")
+        if not ((isinstance(a, int) or isinstance(a, float) or isinstance(a, Decimal))
+                and (isinstance(b, int) or isinstance(b, float) or isinstance(b, Decimal))):
+            raise ArgTypeError("Must be a numerical value.")
+
         generation = generation.lower()
 
         if generation == "flat":
@@ -275,6 +305,7 @@ class Model:
         else:
             temp = d
 
+        counter = 1
         if b:
             # INPUT
             if self.input_func == "minmax":
@@ -285,7 +316,8 @@ class Model:
                 temp = temp.relu(cutoff=self.details["cutoff"], leak=self.details["leak"])
 
             temp += self.bias[0]
-            counter = 1
+
+            self.last_output[0] += temp
 
             # PROCESSING
             if self.activation == "relu":
@@ -297,6 +329,7 @@ class Model:
                         temp = matrix * temp
                         temp += self.bias[counter]
                         temp = temp.relu(cutoff=self.details["cutoff"], leak=self.details["leak"])
+                    self.last_output[counter] += temp
                     counter += 1
 
             elif self.activation == "sigmoid":
@@ -308,6 +341,7 @@ class Model:
                         temp = matrix * temp
                         temp += self.bias[counter]
                         temp = temp.sig(cutoff=self.details["cutoff"])
+                    self.last_output[counter] += temp
                     counter += 1
 
             # OUTPUT
@@ -327,6 +361,7 @@ class Model:
                 temp = self.w_matrices[-1] * temp
                 temp += self.bias[counter]
                 temp = temp.relu(cutoff=self.details["cutoff"], leak=self.details["leak"])
+            self.last_output[-1] += temp
 
         else:
             # INPUT
@@ -337,6 +372,8 @@ class Model:
             elif self.input_func == "relu":
                 temp = temp.relu(cutoff=self.details["cutoff"], leak=self.details["leak"])
 
+            self.last_output[0] += temp
+
             # PROCESSING
             if self.activation == "relu":
                 for matrix in self.w_matrices[:-1]:
@@ -345,6 +382,8 @@ class Model:
                     else:
                         temp = matrix * temp
                         temp = temp.relu(cutoff=self.details["cutoff"], leak=self.details["leak"])
+                    self.last_output[counter] += temp
+                    counter += 1
 
             elif self.activation == "sigmoid":
                 for matrix in self.w_matrices[:-1]:
@@ -353,6 +392,8 @@ class Model:
                     else:
                         temp = matrix * temp
                         temp = temp.sig(cutoff=self.details["cutoff"])
+                    self.last_output[counter] += temp
+                    counter += 1
 
             # OUTPUT
             if self.output_func == "softmax":
@@ -367,7 +408,7 @@ class Model:
             elif self.output_func == "relu":
                 temp = self.w_matrices[-1] * temp
                 temp = temp.relu(cutoff=self.details["cutoff"], leak=self.details["leak"])
-
+            self.last_output[-1] += temp
         return temp
 
     def singleTrain(self, d, label, learning_rate):
@@ -395,7 +436,7 @@ class Model:
                             # OUTPUT LAYER
                             delta = error_list[-1][node_index]
                             list_for_prev_delta.append(delta)
-                            new_weights[0].append(node.w + learning_rate * delta * self.last_output[index - 1])
+                            new_weights[0].append(node.w - learning_rate * delta * self.last_output[index - 1])
                         else:
                             # HIDDENS EXCEPT INPUT
                             error_sum = 0
@@ -406,7 +447,7 @@ class Model:
                             delta = deriv_relu(o, cutoff=self.details["cutoff"], leak=self.details["leak"]) * error_sum
 
                             list_for_prev_delta.append(delta)
-                            new_weights[0].append(node.w + learning_rate * delta * self.last_output[index - 1])
+                            new_weights[0].append(node.w - learning_rate * delta * self.last_output[index - 1])
                     error_list.append(Vector(*list_for_prev_delta))
                     previous_delta = True
 
@@ -434,7 +475,7 @@ class Model:
                             # OUTPUT LAYER
                             delta = error_list[-1][node_index]
                             list_for_prev_delta.append(delta)
-                            new_weights[0].append(node.w + learning_rate * delta * self.last_output[index - 1])
+                            new_weights[0].append(node.w - learning_rate * delta * self.last_output[index - 1])
                         else:
                             # HIDDENS EXCEPT INPUT
                             error_sum = 0
@@ -445,7 +486,7 @@ class Model:
                             delta = o * (1 - o) * error_sum
 
                             list_for_prev_delta.append(delta)
-                            new_weights[0].append(node.w + learning_rate * delta * self.last_output[index - 1])
+                            new_weights[0].append(node.w - learning_rate * delta * self.last_output[index - 1])
                     error_list.append(Vector(*list_for_prev_delta))
                     previous_delta = True
 
@@ -462,7 +503,7 @@ class Model:
                 error_list.append(Vector(*last_delta))
 
             for i in range(len(self.layers)):
-                new_biases.append(self.bias[i] + learning_rate * error_list[-1 - i])
+                new_biases.append(self.bias[i] - learning_rate * error_list[-1 - i])
             for i in range(1, len(self.layers)):
                 for j in range(len(self.layers[i])):
                     self.layers[i][j].w = new_weights[i - 1][j]
@@ -487,7 +528,7 @@ class Model:
                             # OUTPUT LAYER
                             delta = error_list[-1][node_index]
                             list_for_prev_delta.append(delta)
-                            new_weights[0].append(node.w + learning_rate * delta * self.last_output[index - 1])
+                            new_weights[0].append(node.w - learning_rate * delta * self.last_output[index - 1])
                         else:
                             # HIDDENS EXCEPT INPUT
                             error_sum = 0
@@ -498,7 +539,7 @@ class Model:
                             delta = deriv_relu(o, cutoff=self.details["cutoff"], leak=self.details["leak"]) * error_sum
 
                             list_for_prev_delta.append(delta)
-                            new_weights[0].append(node.w + learning_rate * delta * self.last_output[index - 1])
+                            new_weights[0].append(node.w - learning_rate * delta * self.last_output[index - 1])
                     error_list.append(Vector(*list_for_prev_delta))
                     previous_delta = True
 
@@ -526,7 +567,7 @@ class Model:
                             # OUTPUT LAYER
                             delta = error_list[-1][node_index]
                             list_for_prev_delta.append(delta)
-                            new_weights[0].append(node.w + learning_rate * delta * self.last_output[index - 1])
+                            new_weights[0].append(node.w - learning_rate * delta * self.last_output[index - 1])
                         else:
                             # HIDDENS EXCEPT INPUT
                             error_sum = 0
@@ -537,7 +578,7 @@ class Model:
                             delta = o * (1 - o) * error_sum
 
                             list_for_prev_delta.append(delta)
-                            new_weights[0].append(node.w + learning_rate * delta * self.last_output[index - 1])
+                            new_weights[0].append(node.w - learning_rate * delta * self.last_output[index - 1])
                     error_list.append(Vector(*list_for_prev_delta))
                     previous_delta = True
 
@@ -556,7 +597,6 @@ class Model:
         self.updateMatrices()
 
     def train(self, d, label, learning_rate):
-        global _temporary
         self.last_output = [Vector.zero(len(k), decimal=self.decimal) for k in self.layers]
         error_list = []
         error = Vector.zero(len(self.layers[-1]), decimal=self.decimal)
@@ -588,8 +628,11 @@ class Model:
                 for i, data in enumerate(d):
                     temp = self._produce(data, False)
                     error += temp - label[i]
-                    error /= len(d)
+                error /= length
                 error_list.append(error)
+
+            for k in range(len(self.last_output)):
+                self.last_output[k] /= length
             previous_delta = False
             new_weights = []
             new_biases = []
@@ -605,7 +648,7 @@ class Model:
                             # OUTPUT LAYER
                             delta = error_list[-1][node_index]
                             list_for_prev_delta.append(delta)
-                            new_weights[0].append(node.w + learning_rate * delta * self.last_output[index - 1])
+                            new_weights[0].append(node.w - learning_rate * delta * self.last_output[index - 1])
                         else:
                             # HIDDENS EXCEPT INPUT
                             error_sum = 0
@@ -617,7 +660,7 @@ class Model:
                                                leak=self.details["leak"]) * error_sum
 
                             list_for_prev_delta.append(delta)
-                            new_weights[0].append(node.w + learning_rate * delta * self.last_output[index - 1])
+                            new_weights[0].append(node.w - learning_rate * delta * self.last_output[index - 1])
                     error_list.append(Vector(*list_for_prev_delta))
                     previous_delta = True
 
@@ -634,7 +677,6 @@ class Model:
                         deriv_relu(o, cutoff=self.details["cutoff"], leak=self.details["leak"]) * error_sum)
                 error_list.append(Vector(*last_delta))
 
-
             elif self.activation == "sigmoid":
                 for index in range(len(self.layers) - 1, 0, -1):
                     list_for_prev_delta = []
@@ -647,7 +689,7 @@ class Model:
                             # OUTPUT LAYER
                             delta = error_list[-1][node_index]
                             list_for_prev_delta.append(delta)
-                            new_weights[0].append(node.w + learning_rate * delta * self.last_output[index - 1])
+                            new_weights[0].append(node.w - learning_rate * delta * self.last_output[index - 1])
                         else:
                             # HIDDENS EXCEPT INPUT
                             error_sum = 0
@@ -658,7 +700,7 @@ class Model:
                             delta = o * (1 - o) * error_sum
 
                             list_for_prev_delta.append(delta)
-                            new_weights[0].append(node.w + learning_rate * delta * self.last_output[index - 1])
+                            new_weights[0].append(node.w - learning_rate * delta * self.last_output[index - 1])
                     error_list.append(Vector(*list_for_prev_delta))
                     previous_delta = True
 
@@ -675,7 +717,7 @@ class Model:
                 error_list.append(Vector(*last_delta))
 
             for i in range(len(self.layers)):
-                new_biases.append(self.bias[i] + learning_rate * error_list[-1 - i])
+                new_biases.append(self.bias[i] - learning_rate * error_list[-1 - i])
             for i in range(1, len(self.layers)):
                 for j in range(len(self.layers[i])):
                     self.layers[i][j].w = new_weights[i - 1][j]
@@ -683,7 +725,7 @@ class Model:
 
         else:
             if self.multiprocess:
-                p_count = int(log2(len(d)) // 1)
+                p_count = int(log2(length) // 1)
                 pool = []
                 item_count = int((length // p_count) + 1)
                 manager = mp.Manager()
@@ -707,9 +749,10 @@ class Model:
                 for i, data in enumerate(d):
                     temp = self._produce(data, False)
                     error += temp - label[i]
-                    error /= len(d)
+                error /= length
                 error_list.append(error)
-
+            for k in range(len(self.last_output)):
+                self.last_output[k] /= length
             previous_delta = False
             new_weights = []
             if self.activation == "relu":
@@ -724,7 +767,7 @@ class Model:
                             # OUTPUT LAYER
                             delta = error_list[-1][node_index]
                             list_for_prev_delta.append(delta)
-                            new_weights[0].append(node.w + learning_rate * delta * self.last_output[index - 1])
+                            new_weights[0].append(node.w - learning_rate * delta * self.last_output[index - 1])
                         else:
                             # HIDDENS EXCEPT INPUT
                             error_sum = 0
@@ -735,7 +778,7 @@ class Model:
                             delta = deriv_relu(o, cutoff=self.details["cutoff"], leak=self.details["leak"]) * error_sum
 
                             list_for_prev_delta.append(delta)
-                            new_weights[0].append(node.w + learning_rate * delta * self.last_output[index - 1])
+                            new_weights[0].append(node.w - learning_rate * delta * self.last_output[index - 1])
                     error_list.append(Vector(*list_for_prev_delta))
                     previous_delta = True
 
@@ -764,7 +807,7 @@ class Model:
                             # OUTPUT LAYER
                             delta = error_list[-1][node_index]
                             list_for_prev_delta.append(delta)
-                            new_weights[0].append(node.w + learning_rate * delta * self.last_output[index - 1])
+                            new_weights[0].append(node.w - learning_rate * delta * self.last_output[index - 1])
                         else:
                             # HIDDENS EXCEPT INPUT
                             error_sum = 0
@@ -775,7 +818,7 @@ class Model:
                             delta = o * (1 - o) * error_sum
 
                             list_for_prev_delta.append(delta)
-                            new_weights[0].append(node.w + learning_rate * delta * self.last_output[index - 1])
+                            new_weights[0].append(node.w - learning_rate * delta * self.last_output[index - 1])
                     error_list.append(Vector(*list_for_prev_delta))
                     previous_delta = True
 

@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="mlgebra",
-    version="0.1.1",
+    version="0.2.0",
     author="Ahmet Erdem",
     description="A machine learning tool for Python, in Python",
     long_description=long_description,
