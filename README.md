@@ -15,7 +15,7 @@ _pip install mlgebra_
 This project is a continuation of [this](https://github.com/ahmeterdem1/MLgebra) 
 repository. Which is also a continuation of _vectorgebra_ library. This particular
 library therefore requires vectorgebra to be installed. Currently, the development
-process continues. 
+process continues and the code is probably unstable. 
 
 This is a basic tool of machine learning that is created based on vectorgebra. All
 internal operations are imported from vectorgebra. Specific algorithms for machine

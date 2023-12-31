@@ -377,7 +377,7 @@ class Model:
 
         if self.bias:
             temp = self._produce(d, True)
-            error += label - temp
+            error += temp - label
             error_list.append(error)
 
             previous_delta = False
@@ -470,7 +470,7 @@ class Model:
 
         else:
             temp = self._produce(d, False)
-            error += label - temp
+            error += temp - label
             error_list.append(error)
 
             previous_delta = False
@@ -581,13 +581,13 @@ class Model:
                     p.join()
                 logger.info("All processes returned")
                 for k, temp in temporary.items():
-                    error += temp
+                    error += temp - label[k]
                 error /= length
                 error_list.append(error)
             else:
                 for i, data in enumerate(d):
                     temp = self._produce(data, False)
-                    error += label[i] - temp
+                    error += temp - label[i]
                     error /= len(d)
                 error_list.append(error)
             previous_delta = False
@@ -700,13 +700,13 @@ class Model:
                 for p in pool:
                     p.join()
                 for k, temp in temporary.items():
-                    error += temp
+                    error += temp - label[k]
                 error /= length
                 error_list.append(error)
             else:
                 for i, data in enumerate(d):
                     temp = self._produce(data, False)
-                    error += label[i] - temp
+                    error += temp - label[i]
                     error /= len(d)
                 error_list.append(error)
 
