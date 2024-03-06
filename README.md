@@ -2,6 +2,41 @@
 
 A machine learning tool for Python, in Python.
 
+## New code structure
+
+I have prepared a new code structure for this library.
+It is much more readable now. Layout is spreaded to 
+different files which are imported as a chain. "Node" name
+is now "Neuron". Layers are generated on a base class. I have
+included only the Dense layers for now. Model imports layers
+and neurons, and manages the usage of them.
+
+One can see 2 main problems with this new code. 
+
+The first one is the lack of so-called "model compiler". Compiling a model
+on the given choices (Activation function, error function, etc.)
+will result in a much more faster model. This is mainly because,
+here at each iteration and pass through, the code checks parameters
+in if-elif-else chains. This is not needed if we decide at compile
+time. However, it is hard to program this concept purely in Python
+as the given objective here.
+
+The second problem, this code is around 10 times slower than the
+main branch. The code on main branch is not readable, it is almost
+impossible to understand. I don't even know what i did there. But
+it is fast (in Python standards). My experience with this unreadable
+code was training hundreds of models in a given day. It was possible
+to train literally hundreds of models in a day. It was fast enough to
+do that. And considering you can train multiple models at once, I was
+doing around 1000 models per day at the fastest pace. 
+
+It is impossible to do that here. I have profiled the code, most of
+the time is spent at matrix multiplication. And for some reason, 
+at the forward pass, this multiplication is 15 to 20 times slower than
+vanilla Vectorgebra. I am yet unable to find the reason and therefore
+the solution. I will create an issue for that, if you are able to help,
+you are welcome!
+
 ## Project details
 
 https://pypi.org/project/mlgebra/
