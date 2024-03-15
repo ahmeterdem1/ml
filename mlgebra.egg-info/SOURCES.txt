@@ -1,8 +1,13 @@
 LICENSE.txt
 README.md
 setup.py
+mlgebra/MLgebra.py
 mlgebra/__init__.py
+mlgebra/exception.py
+mlgebra/layer.py
 mlgebra/mlgebra.py
+mlgebra/model.py
+mlgebra/neuron.py
 mlgebra.egg-info/PKG-INFO
 mlgebra.egg-info/SOURCES.txt
 mlgebra.egg-info/dependency_links.txt

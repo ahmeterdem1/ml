@@ -1,4 +1,4 @@
-from model import *
+"""from model import *
 from time import time
 logger.setLevel(logging.WARN)
 
@@ -28,7 +28,7 @@ end = time()
 print(f"{(end - begin)/100} seconds on average.")
 
 #mymodel.compile("/Users/ahmeterdem/Desktop")
-"""
+
 mnist = "../../vtest/mnist/"
 # ../../vtest/mnist/
 
@@ -50,6 +50,23 @@ for k in range(100):
     if v.values.index(maximum(v)) == y_test[k].values.index(1):
         total += 1
 
-print(f"{(total / 100):.2f} accuracy at first 100 images.")"""
+print(f"{(total / 100):.2f} accuracy at first 100 images.")
 
 
+"""
+
+"""from mlgebra import *
+
+
+mymodel = Model("MyModel2")
+
+mymodel.structure([
+    Flatten(784),
+    Dense(784, 784, "minmax"),
+    Dense(784, 32, "relu"),
+    Dense(32, 16, "relu"),
+    Dense(16, 10, "softmax")
+])
+
+mymodel.describe()
+mymodel.compile("/Users/ahmeterdem/Desktop")"""

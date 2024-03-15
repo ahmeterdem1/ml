@@ -1,1 +1,1 @@
-vectorgebra>=2.7.1
+vectorgebra>=3.0.3
