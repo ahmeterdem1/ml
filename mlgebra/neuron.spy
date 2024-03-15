@@ -1,0 +1,19 @@
+from exception import *
+
+class Neuron:
+    next_weights: Vector
+    weights: Vector
+
+[NEURON]
+
+class Neuron[LAYER_ORDER](Neuron):
+
+    def __init__(self,
+                 w_count: int,
+                 ):
+
+        self.next_weights = Vector.zero(w_count, [DECIMAL])
+        self.weights = Vector[WEIGHT_GENERATE]
+
+[NEURON]
+

@@ -5,37 +5,13 @@ A machine learning tool for Python, in Python.
 ## New code structure
 
 I have prepared a new code structure for this library.
-It is much more readable now. Layout is spreaded to 
+It is much more readable now. Layout is spread to 
 different files which are imported as a chain. "Node" name
 is now "Neuron". Layers are generated on a base class. I have
 included only the Dense layers for now. Model imports layers
 and neurons, and manages the usage of them.
 
-One can see 2 main problems with this new code. 
-
-The first one is the lack of so-called "model compiler". Compiling a model
-on the given choices (Activation function, error function, etc.)
-will result in a much more faster model. This is mainly because,
-here at each iteration and pass through, the code checks parameters
-in if-elif-else chains. This is not needed if we decide at compile
-time. However, it is hard to program this concept purely in Python
-as the given objective here.
-
-The second problem, this code is around 10 times slower than the
-main branch. The code on main branch is not readable, it is almost
-impossible to understand. I don't even know what i did there. But
-it is fast (in Python standards). My experience with this unreadable
-code was training hundreds of models in a given day. It was possible
-to train literally hundreds of models in a day. It was fast enough to
-do that. And considering you can train multiple models at once, I was
-doing around 1000 models per day at the fastest pace. 
-
-It is impossible to do that here. I have profiled the code, most of
-the time is spent at matrix multiplication. And for some reason, 
-at the forward pass, this multiplication is 15 to 20 times slower than
-vanilla Vectorgebra. I am yet unable to find the reason and therefore
-the solution. I will create an issue for that, if you are able to help,
-you are welcome!
+Problems stated in the last commit is now solved.
 
 ## Project details
 
@@ -56,97 +32,181 @@ This is a basic tool of machine learning that is created based on vectorgebra. A
 internal operations are imported from vectorgebra. Specific algorithms for machine
 learning are created based upon them. 
 
-There are 2 main classes; Node, Model.
+This library can be used in 2 different ways. These methods can be classified into 2:
+Dynamic usage and Static usage.
 
-Node represents neurons in the neural network. They hold the weights connecting it
-to the previous layer in the model as a vector.
+Dynamic usage, is basically the machine learning library that this code aims to be. 
+You can configure your models, load data, and train them. MLgebra also imports 
+Vectorgebra, you can use all the tools there too to preprocess your data, etc. This
+is what you would expect from a classic library. 
+
+Static usage is inherently different from being a "library". Static usage turns this
+library into a framework-like tool. 
+
+Among libraries source files, there are some .spy files. This is short for "source python".
+Those files are template mirrors of original libraries class files. If you chose to compile
+your model with .compile(_destination_) method, those template files are filled according to your
+configurations and a complete mirror of MLgebra library is generated at _destination_ folder. 
+
+Working with this mirror is done by just importing it and using it as if it were MLgebra. 
+You can edit the literal source mirror files as you wish. Despite the given flexibility 
+to the user with this "Static" method, it is named static because it is still a
+lot of lines of code which would take long considerations and trial-and-error cycles to
+properly change and improve. 
+
+You can share your static files as you wish and import other Python files etc., which is
+one of the main points of this compilation method. Your model in Python, is also compiled
+into Python.
+
+### Notes
+
+There is indeed no literal "compilation" like modern AI compilers do. Compilation operation
+done here is just a template filling and loop unrolling. A different class is generated for
+each layer and its neurons from the base classes Neuron and Layer. Neuron base class is absent
+in original MLgebra. Attributes of objects may also differ from original MLgebra as compiled
+class files do not require much of the information given in the original code. 
+
+Deeper explanations for the Dynamic usage is given below.
+
+<hr>
+
+## Neuron
+
+This is the basic class for "perceptron". Objects from this class are the building blocks
+of layers. Weights connecting the perceptron to the previous layer, are stored in the
+perceptron. ".next_weights" attribute is for updating the perceptron. Trained values
+are stored in this attribute at each iteration. When ".update()" is called on the layer,
+".next_weights" replaces ".weights".
+
+## Layer
+
+Layer is the base class for all types of layers that exists in the library, and that
+will exist. Main skeleton for all subclasses are given here. Initializers takes many
+arguments; input_shape, units, activation, bias, initialization, decimal, low, high,
+bias_low, bias_high, cutoff, leak, template. 
+
+### Dense
+
+Basic dense layer for multilayer perceptron. Currently, the only general purpose
+layer type in the library.
+
+#### Initializer arguments
+
+- input_shape: Dimension of the inputted vector to the layer.
+- units: Dimension of the layer that will be generated.
+- activation: Activation functions name; e.g. "relu", "sigmoid".
+- bias: Bias generation method; e.g. "naive", "zero".
+- initialization: Weight initialization method; e.g. "xavier", "he".
+- decimal: Choice to use Decimal or not: boolean
+- low: Parameter for weight generation
+- high: Parameter for weight generation
+- bias_low: Parameter for bias generation
+- bias_high: Parameter for bias generation
+- cutoff: Used for activation choices "relu" and "sigmoid". Processed internally.
+- leak: Used for activation choice "relu". Processed internally.
+- template: Internal boolean. Used by the library when a model is read from file.
+
+#### startForward(input: Vector)
+
+Start the forward pass process. Returns the resulting processed Vector. Input must
+be preprocessed. 
+
+#### forward(input: Vector)
+
+Continues the forward pass. Returns the output Vector from the activation function.
+
+#### startBackward(deltas, inputs, lr)
+
+Starts the backpropagation process. "deltas" is the Vector of errors. "inputs" is the
+previous inputs to this layer during the forward pass process. "lr" is the learning rate.
+Must be a Decimal object if it is set to True in the model. Saves the recalculated weights
+in Neurons' ".next_weights" and saves the recalculated biases in self.next_bias. 
+
+#### backward(deltas, inputs, lr)
+
+Continues the backpropagation process. Arguments are the same as .startBackward(). Applies
+derivatives according to the activation function of the layer. Other functionalities are
+the same as .startBackward().
+
+#### .update()
+
+Replaces weights and biases with the trained ones. Must be called after the backwards pass
+ends completely. 
+
+### Flatten
+
+A preprocessing layer that flattens the matrix-tensor input into a Vector. 
+
+#### Initializer arguments
+
+- shape: The dimension of the required output Vector. 
+
+#### startForward(), forward()
+
+Flattens the input tensor into a Vector which is "shape" dimensional.
+
 
 ## Model
 
-Model class has all functionality to train one. Initialization starts with giving it 
-a name, choosing whether to use decimal library and to use multiprocessing. Multiprocessing
-should only be used when dealing with large models and large data batch sizes. Otherwise,
-linear program flow is better. 
+This is the class that collects neurons and layers together and governs them as to
+train a "model". 
 
-Model name must be unique. Weights and biases of the model are saved to a file according to
-this given name. Initialization will raise an error if a weight file with the same name is 
-found in the same directory.
+### Initializing arguments
 
-Printing the model object will print out details about the model.
+- name: Name of the model. This must be different for each object, as file savings etc. are done according to this name.
+- loss: Loss function choice. Only cross entropy loss is included in the library yet. You may leave this be.
+- decimal: Main decimal choice of your model is done here. If set True, all other governed objects will have decimal=True.
 
-### _Model_.addDense(amount)
+### loadModel(path)
 
-The only layer type currently is "dense". This method adds a layer of "amount" neurons to the
-model.
+Loads a saved model file. You have to structure your model accordingly before loading the weights. 
+Saved model files only store weights, biases and activation functions. "path" is a complete path
+to your model file including its name. This method is currently not usable for compiled model mirror
+files. 
 
-### _Model_.saveModel()
+### saveModel(path)
 
-Saves the weight file of the model.
+Saves your model to the specified directory. "path" is now a directory. File name is generated with your models
+name. This method is currently not usable for compiled model mirror files. 
 
-### _Model_.readWeightFile(path)
+### addLayer(layer: Layer)
 
-Loads a weight file specified via "path" to the model. This operation must be done without any 
-bias or weight finalization. However, layers must be configured before using it.
+Add a layer to your model.
 
-### _Model_.readMNIST(path1, path2, path3, path4)
+### structure(layers: List)
 
-Reads training/test data/label of MNIST database and returns it in order. Paths are in order to 
-training data, training labels, test data, test labels. Returned objects are lists of vectors.
-They can be directly used for .singleTrain(), oru you can group them and use them in parallel.
+Give a complete list of layers of your model. A new layer list is generated from the "layers" argument.
 
-### _Model_.finalize(generation="flat", a=-2, b=2)
+### produce(input)
 
-This method "finalizes" the model. Therefore, it should be called at the end of every other thing.
-This method initializes all the weights to layers according to the given "generation" method. This
-can be _uxavier_, _nxavier_,  _he_, _naive_ and _flat_. _uxavier_ is uniform Xavier initalization.
-_nxavier_ is normal Xavier initialization. _he_ is He initialization. _naive_ is initialization from
-normal distribution. If this method is choosen, "a" is the standard deviation of the curve. _flat_ is
-just random float generation from the range [a, b).
+Produce an output with your model. "input" is what your model takes. It might be a Vector, or a Matrix
+if you have a Flatten layer. Same for Tensor. Returns the output Vector of your model. 
 
-### _Model_.includeBias(generation="flat", a=-2, b=2)
+### evaluate(x, y)
 
-This method includes bias vectors to the model. It can be omitted if you don't want to use any bias.
-Of course this is not a very good idea but being able to omit it adds experimentability to the library.
+Returns the calculated absolute error of your model on given testing input set x and testing labels y.
 
-_flat_, _zero_ and _constant_ are possible generation methods. _flat_ is generation from random floats in
-range [a, b). _zero_ initializes all biases to 0, and _constant_ initializes all them to a constant value
-given by "a".
+### train(x, y, validate_x, validate_y, batch_size=1, lr=0.001)
 
-### _Model_.configureMethods(**kwargs)
+Train your model on training set x and training labels y. "validate_x" and "validate_y" are optional. If
+given, after each batch training, absolute error on validation set is logged to the screen. In the future,
+updates utilizing validation sets in training will come. Batch size and learning rate is self-explanatory.
 
-This method configures all other parameters of your model. Activation function, input normalization, operations
-to the output logits and parameters to all related functions are given here. 
+### describe()
 
-All keys: _input_, _output_, _activator_, _cutoff_, _leak_
+Prints a basic description of your model to the screen.
 
-All possible choices: _minmax_, _softmax_, _sigmoid_, _relu_, cutoff and leak accepts numerical values
+### compile(destination)
 
-These possibilities will be more diverse in the upcoming versions. Currently, these are all.
+Compiles your model into mirror-MLgebra files and saves them in a directory named with your models name into
+the specified directory with "destination".
 
-### _Model_.updateMatrices()
+## Methods
 
-This is a helper function called from training methods. _self.last_output_ must be non-empty to use this.
-You can use this method if you want to use different training approaches with your own function definitions.
-Currently only optimizer method that is being used by training functions is stochastic gradient descent.
+### readMnist(path1, path2, path3, path4, decimal)
 
-### _Model_.singleTrain(data, label, learing_rate)
-
-This function trains the model by the given singular data. "data" must either be a Vectorgebra.Vector or
-Vectorgebra.Matrix. "label" must be a Vectorgebra.Vector. You can choose "learning_rate" as you wish.
-
-### _Model_.train(dataset, labelset, learning_rate)
-
-This method trains the model by data batches. "dataset" must be a list of all Vectorgebra.Vector or 
-Vectorgebra.Matrix. "labelset" must be a list of all Vectorgebra.Vector. Length of these two lists
-must be equal. If, during initialization, multiprocessing was chosen to be True, this method applies
-parallel programming. 
-
-### _Model_.produce(data)
-
-This method produces a result by the model. "data" must be either a Vectorgebra.Vector or Vectorgebra.Matrix.
-Result is a Vectorgebra.Vector object which is the result values from the output layer logits.
-
-<hr>
+Read MNISt database with decimal choice. "path1" and "path2" are training set and training labels.
+"path3" and "path4" are test set and labels. Returns a 4-Vector-tuple. 
 
 ## Exceptions
 

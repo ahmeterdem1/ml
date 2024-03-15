@@ -1,0 +1,147 @@
+from layer import *
+from os.path import exists, isdir
+from mlgebra import readMnist, integer, PATH
+
+[MODEL]
+
+class Model:
+
+    def __init__(self):
+        self.name = [MODEL_NAME]
+        self.loss = [LOSS_FUNCTION]
+        self.decimal = [DECIMAL]
+        self.layers: List[Layer] = []
+
+    def loadModel(self, path: str):
+        if not exists(path):
+            raise FileNotFoundError()
+
+        with open(path, "r") as file:
+            general_header = file.readline().replace("\n", "").split(":")
+            layer_count = int(general_header[0])
+            input_shape = int(general_header[1])
+
+            if general_header[-1] == "1":
+                self.decimal = True
+                for k in range(layer_count):
+                    header = file.readline().replace("\n", "").split(":")
+                    if header[0] == "dense":
+                        units = int(header[2])
+                        layer = Dense(input_shape, units, header[1], template=True)
+                        for l in range(units):
+                            row = Vector(*[Decimal(m) for m in file.readline().replace("\n", "").split(":")])
+                            layer.layer.append(Neuron(input_shape, template=True))
+                            layer.layer[-1].weights = row
+                        layer.bias = Vector(*[Decimal(m) for m in file.readline().replace("\n", "").split(":")])
+                        layer.w_matrix = Matrix(*[n.weights for n in layer.layer])
+                        self.layers.append(layer)
+                    elif header[0] == "flatten":
+                        self.layers.append(Flatten(int(header[-1])))
+            else:
+                self.decimal = False
+                for k in range(layer_count):
+                    header = file.readline().replace("\n", "").split(":")
+                    if header[0] == "dense":
+                        units = int(header[2])
+                        layer = Dense(input_shape, units, header[1], template=True)
+                        for l in range(units):
+                            row = Vector(*[float(m) for m in file.readline().replace("\n", "").split(":")])
+                            layer.layer.append(Neuron(input_shape, template=True))
+                            layer.layer[-1].weights = row
+                        layer.bias = Vector(*[float(m) for m in file.readline().replace("\n", "").split(":")])
+                        layer.w_matrix = Matrix(*[n.weights for n in layer.layer])
+                        self.layers.append(layer)
+                    elif header[0] == "flatten":
+                        self.layers.append(Flatten(int(header[-1])))
+
+    def saveModel(self, path: str):
+        if not isdir(path):
+            raise NotADirectoryError()
+        modelPath = path + "/" + self.name + ".model"
+        if exists(modelPath):
+            raise FileExistsError()
+
+        with open(modelPath, "x") as file:
+            file.write(f"{len(self.layers)}:{self.layers[0].units}:{'1' if self.decimal else '0'}\n")
+            for layer in self.layers:
+                file.write(f"{layer.name}:{layer.activation}:{layer.units}\n")
+                for neuron in layer.layer:
+                    file.write(":".join([str(k) for k in neuron.weights.values]) + "\n")
+                if layer.bias:
+                    file.write(":".join([str(k) for k in layer.bias.values]) + "\n")
+
+    def addLayer(self, layer: Layer):
+        self.layers.append(layer)
+
+    def structure(self, s: List[Layer]):
+        self.layers = [layer for layer in s]
+
+    def produce(self, input: Union[Tensor, Matrix, Vector]):
+        output = input
+        [START_PRODUCE]
+        return output
+
+    def evaluate(self, x: Union[List[Vector], List[Matrix], Matrix, Tensor],
+                       y: Union[List[Vector], List[Matrix], Matrix, Tensor]):
+        error = Vector.zero(self.layers[-1].units, self.decimal)
+
+        for k in range(len(x)):
+            error += y[k].dot(Vector(*[ln(k) for k in self.produce(x[k]).values]))
+        error /= len(x)
+
+        return -error.cumsum()
+
+
+    def train(self, x: Union[List[Vector], List[Matrix], Matrix, Tensor],
+                    y: Union[List[Vector], List[Matrix], Matrix, Tensor],
+                    validation_x: Union[List[Vector], List[Matrix], Matrix, Tensor, None] = None,
+                    validation_y: Union[List[Vector], List[Matrix], Matrix, Tensor, None] = None,
+                    batch_size: int = 1,
+                    lr: Union[int, float, Decimal]
+              ):
+
+        count = len(x) // batch_size
+        for k in range(count - 1):
+            error = Vector.zero(self.layers[-1].units, self.decimal)
+            for l in range(batch_size):
+                error += y[k * batch_size + l] - self.produce(x[k * batch_size + l])
+
+            error /= batch_size
+            error = self.layers[-1].startBackward(error, self.layers[-2].output, lr)
+
+            [BACKPROPAGATE]
+
+            for i in range(1, len(self.layers)):
+                if self.layers[i - 1].name != "flatten":
+                    self.layers[i].update()
+
+            if validation_x:
+                logger.info(f"Error at batch {k} with {self.loss}: {self.evaluate(validation_x, validation_y)}")
+
+        # Last Batch
+        error = Vector.zero(self.layers[-1].units, self.decimal)
+        for k in range(len(x) - (count - 1) * batch_size):
+            error += y[(count - 1) * batch_size + k] - self.produce(x[(count - 1) * batch_size + k])
+
+        error /= len(x) - (count - 1) * batch_size
+        error = self.layers[-1].startBackward(error, self.layers[-2].output, lr)
+
+        [LASTPROPAGATE]
+
+        for i in range(1, len(self.layers)):
+            if self.layers[i - 1].name != "flatten":
+                self.layers[i].update()
+
+        if validation_x:
+            logger.info(f"Error at last batch with {self.loss}: {self.evaluate(validation_x, validation_y)}")
+
+    def describe(self):
+        print(f"Model: {self.name}")
+        for layer in self.layers:
+            print(f"-> {layer.name} | {layer.units} | {layer.activation}")
+
+    def compile(self, destination: str):
+        logger.warning("Model already compiled!")
+
+[MODEL]
+

@@ -1,6 +1,8 @@
 from layer import *
-from os.path import exists, isdir
-import cProfile
+from os.path import exists, isdir, dirname, abspath
+from os import makedirs
+
+PATH = dirname(abspath(__file__))
 
 def integer(b):
     return int.from_bytes(b, byteorder="big")
@@ -99,6 +101,7 @@ class Model:
             input_shape = int(general_header[1])
 
             if general_header[-1] == "1":
+                self.decimal = True
                 for k in range(layer_count):
                     header = file.readline().replace("\n", "").split(":")
                     if header[0] == "dense":
@@ -110,7 +113,11 @@ class Model:
                             layer.layer[-1].weights = row
                         layer.bias = Vector(*[Decimal(m) for m in file.readline().replace("\n", "").split(":")])
                         layer.w_matrix = Matrix(*[n.weights for n in layer.layer])
+                        self.layers.append(layer)
+                    elif header[0] == "flatten":
+                        self.layers.append(Flatten(int(header[-1])))
             else:
+                self.decimal = False
                 for k in range(layer_count):
                     header = file.readline().replace("\n", "").split(":")
                     if header[0] == "dense":
@@ -122,6 +129,9 @@ class Model:
                             layer.layer[-1].weights = row
                         layer.bias = Vector(*[float(m) for m in file.readline().replace("\n", "").split(":")])
                         layer.w_matrix = Matrix(*[n.weights for n in layer.layer])
+                        self.layers.append(layer)
+                    elif header[0] == "flatten":
+                        self.layers.append(Flatten(int(header[-1])))
 
     def saveModel(self, path: str):
         if not isdir(path):
@@ -135,8 +145,9 @@ class Model:
             for layer in self.layers:
                 file.write(f"{layer.name}:{layer.activation}:{layer.units}\n")
                 for neuron in layer.layer:
-                    file.write(":".join(neuron.weights.values) + "\n")
-                file.write(":".join(layer.bias.values) + "\n")
+                    file.write(":".join([str(k) for k in neuron.weights.values]) + "\n")
+                if layer.bias:
+                    file.write(":".join([str(k) for k in layer.bias.values]) + "\n")
 
     def addLayer(self, layer: Layer):
         self.layers.append(layer)
@@ -145,9 +156,18 @@ class Model:
         self.layers = [layer for layer in s]
 
     def produce(self, input: Union[Tensor, Matrix, Vector]):
-        output = input.reshape(len(input.values) * len(input.values[0]))
-        for layer in self.layers:
-            output = layer.forward(output)
+        output = input
+        check = False
+        for k in range(len(self.layers)):
+            if check:
+                check = False
+                continue
+            elif self.layers[k].name == "flatten":
+                output = self.layers[k].startForward(input)
+                output = self.layers[k + 1].startForward(output)
+                check = True
+            elif self.layers[k].name == "dense":
+                output = self.layers[k].forward(output)
         return output
 
     def evaluate(self, x: Union[List[Vector], List[Matrix], Matrix, Tensor],
@@ -174,8 +194,8 @@ class Model:
             count = len(x) // batch_size
             for k in range(count - 1):
                 error = Vector.zero(self.layers[-1].units, self.decimal)
-                if k % 600 == 0:
-                    print(f"Training {(k / 600):.2f} done.")
+
+                logger.info(f"{(k / count):.2f}% done.")
                 for l in range(batch_size):
                     error += y[k * batch_size + l] - self.produce(x[k * batch_size + l])
 
@@ -184,7 +204,9 @@ class Model:
 
                 for i in range(len(self.layers) - 2, 0, -1):
                     error_sum = []
-                    if self.layers[i].name == "dense" and self.layers[i + 1].name == "dense":
+                    if self.layers[i - 1].name == "flatten":
+                        continue
+                    elif self.layers[i].name == "dense" and self.layers[i + 1].name == "dense":
                         for j in range(self.layers[i].units):
                             e_sum = 0
                             for m in range(self.layers[i + 1].units):
@@ -195,12 +217,11 @@ class Model:
                         self.layers[i].backward(error, self.layers[i - 1].output, lr)
 
                 for i in range(1, len(self.layers)):
-                    self.layers[i].update()
-
+                    if self.layers[i - 1].name != "flatten":
+                        self.layers[i].update()
 
                 if validation_x:
                     logger.info(f"Error at batch {k} with {self.loss}: {self.evaluate(validation_x, validation_y)}")
-
 
             # Last Batch
             error = Vector.zero(self.layers[-1].units, self.decimal)
@@ -211,7 +232,9 @@ class Model:
             error = self.layers[-1].startBackward(error, self.layers[-2].output, lr)
             for i in range(len(self.layers) - 2, 0, -1):
                 error_sum = []
-                if self.layers[i].name == "dense" and self.layers[i + 1].name == "dense":
+                if self.layers[i - 1].name == "flatten":
+                    continue
+                elif self.layers[i].name == "dense" and self.layers[i + 1].name == "dense":
                     for j in range(self.layers[i].units):
                         e_sum = 0
                         for m in range(self.layers[i + 1].units):
@@ -222,7 +245,8 @@ class Model:
                     self.layers[i].backward(error, self.layers[i - 1].output, lr)
 
             for i in range(1, len(self.layers)):
-                self.layers[i].update()
+                if self.layers[i - 1].name != "flatten":
+                    self.layers[i].update()
 
             if validation_x:
                 logger.info(f"Error at last batch with {self.loss}: {self.evaluate(validation_x, validation_y)}")
@@ -231,5 +255,195 @@ class Model:
         print(f"Model: {self.name}")
         for layer in self.layers:
             print(f"-> {layer.name} | {layer.units} | {layer.activation}")
+
+    def compile(self, destination: str):
+        if not isdir(destination):
+            raise NotADirectoryError()
+
+        try:
+            with open(f"{PATH}/neuron.spy", "r") as file:
+                neuron_file = file.read()
+        except Exception as e:
+            logger.warning(f"neuron.spy file could not be read at directory {PATH}: {e}")
+            return
+
+        neuron_file = neuron_file.split("[NEURON]")
+        neuron_header = neuron_file[0]
+        neuron_template = neuron_file[1].replace("[DECIMAL]", str(self.decimal))
+        del neuron_file
+
+        try:
+            with open(f"{PATH}/layer.spy", "r") as file:
+                layer_file = file.read()
+        except Exception as e:
+            logger.warning(f"layer.spy file could not be read at directory {PATH}: {e}")
+            return
+
+        layer_file = layer_file.split("[DENSE]")
+        layer_header = layer_file[0]
+        layer_template = layer_file[1].replace("[DECIMAL]", str(self.decimal))
+        del layer_file
+
+        try:
+            with open(f"{PATH}/model.spy", "r") as file:
+                model_file = file.read()
+        except Exception as e:
+            logger.warning(f"model.spy file could not be read at directory {PATH}: {e}")
+            return
+
+        model_file = model_file.split("[MODEL]")
+        model_header = model_file[0]
+        model_template = model_file[1].replace("[DECIMAL]", str(self.decimal)) \
+            .replace("[MODEL_NAME]", f"'{self.name}'").replace("[LOSS_FUNCTION]", f"'{self.loss}'")
+        del model_file
+
+        passed_flatten = False
+        for index, layer in enumerate(self.layers):
+
+            if layer.name == "flatten":
+                passed_flatten = True
+                model_template = model_template.replace("[START_PRODUCE]", f"output = output.reshape({layer.units})"
+                                                           f"\n        [START_PRODUCE]")
+                continue
+
+            neuron_temporary = neuron_template.replace("[LAYER_ORDER]", str(index))
+            layer_temporary = layer_template.replace("[LAYER_ORDER]", str(index)) \
+                    .replace("[LAYER_TYPE_NAME]", f"'{layer.name}'").replace("[LEAK]", str(layer.leak)) \
+                    .replace("[CUTOFF]", str(layer.cutoff)).replace("[ACTIVATION_NAME]", f"'{layer.activation}'") \
+                    .replace("[UNITS]", str(layer.units))
+
+            # Neuron generation
+            if layer.generation_info[0] == "zero":
+                neuron_temporary = neuron_temporary.replace("[WEIGHT_GENERATE]", f".zero({layer.generation_info[-1]}, {self.decimal})")
+
+            elif layer.generation_info[0] == "one":
+                neuron_temporary = neuron_temporary.replace("[WEIGHT_GENERATE]", f".one({layer.generation_info[-1]}, {self.decimal})")
+
+            elif layer.generation_info[0] == "uniform" or layer.generation_info[0] == "flat":
+                neuron_temporary = neuron_temporary.replace("[WEIGHT_GENERATE]",
+                                         f".randVfloat({layer.generation_info[-1]}, "
+                                         f"{layer.generation_info[1]}, "
+                                         f"{layer.generation_info[2]}, {self.decimal})")
+
+            elif layer.generation_info[0] == "naive":
+                neuron_temporary = neuron_temporary.replace("[WEIGHT_GENERATE]",
+                                         f".randVgauss({layer.generation_info[-1]}, "
+                                         f"{layer.generation_info[1]}, "
+                                         f"{layer.generation_info[2]}, {self.decimal})")
+
+            elif layer.generation_info[0] == "uxavier":
+                limiter = sqrt(6 / (layer.generation_info[1] + layer.generation_info[-1]))
+                neuron_temporary = neuron_temporary.replace("[WEIGHT_GENERATE]",
+                                         f".randVgauss({layer.generation_info[-1]}, "
+                                         f"{-limiter}, "
+                                         f"{limiter}, {self.decimal})")
+
+            elif layer.generation_info[0] == "nxavier" or layer.generation_info[0] == "xavier":
+                sigma = sqrt(2 / (layer.generation_info[1] + layer.generation_info[-1]))
+                neuron_temporary = neuron_temporary.replace("[WEIGHT_GENERATE]",
+                                         f".randVgauss({layer.generation_info[-1]}, "
+                                         f"0, {sigma}, {self.decimal})")
+
+            elif layer.generation_info[0] == "he":
+                sigma = 2 / sqrt(layer.generation_info[1])
+                neuron_temporary = neuron_temporary.replace("[WEIGHT_GENERATE]",
+                                         f".randVgauss({layer.generation_info[-1]}, "
+                                         f"0, {sigma}, {self.decimal})")
+
+            else:
+                neuron_temporary = neuron_temporary.replace("[WEIGHT_GENERATE]", f"(*[{layer.generation_info[1]}"
+                                                              f" for k in range({layer.generation_info[-1]})])")
+
+            # Defining the derivatives and the activation function
+            if layer.activation == "minmax":
+                layer_temporary = layer_temporary.replace("[ACTIVATION]", ".minmax()") \
+                    .replace("[DERIVATIVE]", "self.output[i] * (1 - self.output[i])")
+                # So that the derivative is defined. No other purpose
+
+            elif layer.activation == "relu":
+                layer_temporary = layer_temporary.replace("[ACTIVATION]", ".relu(self.leak, self.cutoff)") \
+                    .replace("[DERIVATIVE]", "deriv_relu(self.output[i], self.leak, self.cutoff)")
+
+            elif layer.activation == "sigmoid":
+                layer_temporary = layer_temporary.replace("[ACTIVATION]", ".sigmoid(1, self.cutoff)") \
+                    .replace("[DERIVATIVE]", "self.output[i] * (1 - self.output[i])")
+
+            elif layer.activation == "softmax":
+                layer_temporary = layer_temporary.replace("[ACTIVATION]", ".softmax()") \
+                    .replace("[DERIVATIVE]", "self.output[i] * (1 - self.output[i])")
+
+            else:
+                layer_temporary = layer_temporary.replace("[ACTIVATION]", "") \
+                    .replace("[DERIVATIVE]", "1")
+
+            # Layer bias generation
+            if layer.generation_info[-2] == "zero":
+                layer_temporary = layer_temporary.replace("[BIAS_GENERATE]", ".zero(self.units, self.decimal)")
+            elif layer.generation_info[-2] == "one":
+                layer_temporary = layer_temporary.replace("[BIAS_GENERATE]", ".one(self.units, self.decimal)")
+            elif layer.generation_info[-2] == "naive":
+                layer_temporary = layer_temporary.replace("[BIAS_GENERATE]", f".randVgauss(self.units, "
+                                                           f"{layer.generation_info[3]}, "
+                                                           f"{layer.generation_info[4]}, self.decimal)")
+            elif layer.generation_info[-2] == "flat":
+                layer_temporary = layer_temporary.replace("[BIAS_GENERATE]", f".randVfloat(self.units, "
+                                                           f"{layer.generation_info[3]}, "
+                                                           f"{layer.generation_info[4]}, self.decimal)")
+            else:
+                layer_temporary.replace("[BIAS_GENERATE]", f"([{layer.generation_info[3]} for k in range(self.units)])")
+
+            if passed_flatten:
+                model_template = model_template.replace("[START_PRODUCE]", f"output = self.layers[{index}].startForward(output)"
+                                                          f"\n        [START_PRODUCE]")
+                passed_flatten = False
+            else:
+                model_template = model_template.replace("[START_PRODUCE]", f"output = self.layers[{index}].forward(output)"
+                                                          f"\n        [START_PRODUCE]")
+
+            if len(self.layers) - 1 > index > 0:
+                model_template = model_template.replace("[BACKPROPAGATE]", f"""[BACKPROPAGATE]\n
+            error_sum = []
+            for j in range(self.layers[{index}].units):
+                e_sum = 0
+                for m in range(self.layers[{index + 1}].units):
+                    e_sum += self.layers[{index + 1}].layer[m].weights[j] * error[m]
+                error_sum.append(e_sum)
+
+            error = Vector(*error_sum)
+            self.layers[i].backward(error, self.layers[{index - 1}].output, lr)\n""")
+                model_template = model_template.replace("[LASTPROPAGATE]", f"""[LASTPROPAGATE]\n
+        error_sum = []
+        for j in range(self.layers[{index}].units):
+            e_sum = 0
+            for m in range(self.layers[{index + 1}].units):
+                e_sum += self.layers[{index + 1}].layer[m].weights[j] * error[m]
+            error_sum.append(e_sum)
+
+        error = Vector(*error_sum)
+        self.layers[i].backward(error, self.layers[{index - 1}].output, lr)\n""")
+
+            neuron_header += neuron_temporary
+            layer_header += layer_temporary
+
+        model_template = model_template.replace("[START_PRODUCE]", "").replace("[BACKPROPAGATE]", "") \
+            .replace("[LASTPROPAGATE]", "")
+        makedirs(f"{destination}/{self.name}")
+
+        with open(f"{PATH}/exception.py", "r") as file:
+            exc = file.read()
+
+        with open(f"{destination}/{self.name}/exception.py", "w") as file:
+            file.write(exc)
+
+        with open(f"{destination}/{self.name}/neuron.py", "w") as file:
+            file.write(neuron_header)
+
+        with open(f"{destination}/{self.name}/layer.py", "w") as file:
+            file.write(layer_header)
+
+        with open(f"{destination}/{self.name}/model.py", "w") as file:
+            file.write(model_header + model_template)
+
+        logger.info(f"Model compiled and saved at {destination}/{self.name}")
 
 

@@ -1,0 +1,100 @@
+from neuron import *
+
+class Layer:
+    name: str
+    layer: List[Neuron]
+    units: int
+    bias: Vector
+    next_bias: Vector
+    output: Vector
+    w_matrix: Matrix
+    leak: Union[int, float, Decimal]
+    cutoff: Union[int, float, Decimal]
+
+    # This class is created so that when i want to create
+    # other types of layers like Convolution, RNN, etc. it
+    # will be easier and more modular.
+
+    def __init__(self):
+        raise NotImplementedError()
+
+    def forward(self, input_vector):
+        # This will return the "a" vector produced by the layer.
+        raise NotImplementedError()
+
+    def startForward(self, input_vector):
+        raise NotImplementedError()
+
+    def backward(self, deltas, inputs, lr):
+        # This will return the vector of delta's calculated for the weights.
+        raise NotImplementedError()
+
+    def startBackward(self, deltas, inputs, lr):
+        # This is only for the last layer in the model.
+        raise NotImplementedError()
+
+    def update(self):
+        raise NotImplementedError()
+
+[DENSE]
+
+class Dense[LAYER_ORDER](Layer):
+
+    def __init__(
+                 self,
+                 input_shape: int,
+                 units: int,
+                 ):
+
+        self.name = [LAYER_TYPE_NAME]
+        self.units = [UNITS]
+        self.decimal = [DECIMAL]
+        self.activation = [ACTIVATION_NAME]
+
+        self.leak = [LEAK]
+        self.cutoff = [CUTOFF]
+
+        self.layer = [Neuron[LAYER_ORDER](input_shape) for k in range(self.units)]
+        self.w_matrix = Matrix(*[n.weights for n in self.layer])
+
+        self.bias = Vector[BIAS_GENERATE]
+
+        self.next_bias = Vector.zero(self.units, self.decimal)
+        self.output = Vector.zero(units, self.decimal)
+
+    def forward(self, input_vector: Vector):
+        # This will be called from the "Model" class.
+        z = self.w_matrix * input_vector + self.bias
+        return z[ACTIVATION]
+
+    def startForward(self, input_vector):
+        return input_vector[ACTIVATION]
+
+    def backward(self, deltas: Vector, inputs: Vector, lr: Union[int, float, Decimal]):
+        # deltas will have error sums as components.
+        # Proper calculations will be done in the "Model" class.
+        output = Vector()
+        for i in range(self.units):
+            delta = deltas[i] * [DERIVATIVE]
+            output.append(delta)
+            self.layer[i].next_weights = self.layer[i].weights - lr * delta * inputs[i]
+        self.next_bias = self.bias - deltas * lr
+        return output
+
+    def startBackward(self, deltas: Vector, inputs: Vector, lr: Union[int, float, Decimal]):
+        for i in range(self.units):
+            self.layer[i].next_weights = self.layer[i].weights - lr * deltas[i] * inputs[i]
+        self.next_bias = self.bias - deltas * lr
+        return deltas
+
+    def update(self):
+        vlist = []
+        for neuron in self.layer:
+            neuron.weights = neuron.next_weights
+            vlist.append(neuron.next_weights)
+            neuron.next_weights = Vector.zero(self.units, self.decimal)
+        self.w_matrix = Matrix(*vlist)
+        self.bias = self.next_bias
+
+[DENSE]
+

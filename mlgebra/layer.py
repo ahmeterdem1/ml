@@ -1,5 +1,4 @@
 from neuron import *
-from time import time
 
 class Layer:
     name: str
@@ -13,6 +12,7 @@ class Layer:
     leak: Union[int, float, Decimal]
     cutoff: Union[int, float, Decimal]
     decimal: bool
+    generation_info: List
 
     # This class is created so that when i want to create
     # other types of layers like Convolution, RNN, etc. it
@@ -23,6 +23,9 @@ class Layer:
 
     def forward(self, input_vector):
         # This will return the "a" vector produced by the layer.
+        raise NotImplementedError()
+
+    def startForward(self, input_vector):
         raise NotImplementedError()
 
     def backward(self, deltas, inputs, lr):
@@ -65,6 +68,8 @@ class Dense(Layer):
 
         self.leak = leak
         self.cutoff = cutoff
+
+
         if template:
             self.next_bias = Vector.zero(self.units, self.decimal)
             self.output = Vector.zero(units, self.decimal)
@@ -75,6 +80,7 @@ class Dense(Layer):
 
             self.layer = [Neuron(input_shape, initialization, self.decimal, low, high) for k in range(self.units)]  # A list of nodes
             self.w_matrix = Matrix(*[n.weights for n in self.layer])
+            self.generation_info = (initialization, low, high, bias_low, bias_high, bias, input_shape)
 
             if bias == "zero":
                 self.bias = Vector.zero(self.units, self.decimal)
@@ -92,6 +98,7 @@ class Dense(Layer):
 
     def forward(self, input_vector: Vector):
         # This will be called from the "Model" class.
+
         z = self.w_matrix * input_vector + self.bias
 
         if self.activation == "minmax":
@@ -104,6 +111,18 @@ class Dense(Layer):
             return z.softmax()
         else:
             return z
+
+    def startForward(self, input_vector):
+        if self.activation == "minmax":
+            return input_vector.minmax()
+        elif self.activation == "relu":
+            return input_vector.relu(self.leak, self.cutoff)
+        elif self.activation == "sigmoid":
+            return input_vector.sig(1, self.cutoff)
+        elif self.activation == "softmax":
+            return input_vector.softmax()
+        else:
+            return input_vector
 
     def backward(self, deltas: Vector, inputs: Vector, lr: Union[int, float, Decimal]):
         # deltas will have error sums as components.
@@ -137,3 +156,31 @@ class Dense(Layer):
             neuron.next_weights = Vector.zero(self.units, self.decimal)
         self.w_matrix = Matrix(*vlist)
         self.bias = self.next_bias
+
+class Flatten(Layer):
+
+    def __init__(self, shape: int):
+        self.name = "flatten"
+        self.units = shape
+        self.activation = "pass-through"
+        self.layer = []
+        self.bias = []
+        self.w_matrix = Matrix()
+
+    def startForward(self, input_vector: Union[Vector, Matrix, Tensor]):
+        if isinstance(input_vector, Tensor):
+            return input_vector.flatten()
+        elif isinstance(input_vector, Matrix):
+            return input_vector.reshape(self.units)
+        else:
+            return input_vector
+
+    def forward(self, input_vector):
+        if isinstance(input_vector, Tensor):
+            return input_vector.flatten()
+        elif isinstance(input_vector, Matrix):
+            return input_vector.reshape(self.units)
+        else:
+            return input_vector
+
+
