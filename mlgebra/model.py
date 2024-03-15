@@ -261,10 +261,10 @@ class Model:
             raise NotADirectoryError()
 
         try:
-            with open(f"{PATH}/neuron.spy", "r") as file:
+            with open(f"{PATH}/spy/neuron.spy", "r") as file:
                 neuron_file = file.read()
         except Exception as e:
-            logger.warning(f"neuron.spy file could not be read at directory {PATH}: {e}")
+            logger.warning(f"neuron.spy file could not be read at directory {PATH}/spy/: {e}")
             return
 
         neuron_file = neuron_file.split("[NEURON]")
@@ -273,10 +273,10 @@ class Model:
         del neuron_file
 
         try:
-            with open(f"{PATH}/layer.spy", "r") as file:
+            with open(f"{PATH}/spy/layer.spy", "r") as file:
                 layer_file = file.read()
         except Exception as e:
-            logger.warning(f"layer.spy file could not be read at directory {PATH}: {e}")
+            logger.warning(f"layer.spy file could not be read at directory {PATH}/spy/: {e}")
             return
 
         layer_file = layer_file.split("[DENSE]")
@@ -285,23 +285,26 @@ class Model:
         del layer_file
 
         try:
-            with open(f"{PATH}/model.spy", "r") as file:
+            with open(f"{PATH}/spy/model.spy", "r") as file:
                 model_file = file.read()
         except Exception as e:
-            logger.warning(f"model.spy file could not be read at directory {PATH}: {e}")
+            logger.warning(f"model.spy file could not be read at directory {PATH}/spy/: {e}")
             return
 
         model_file = model_file.split("[MODEL]")
         model_header = model_file[0]
         model_template = model_file[1].replace("[DECIMAL]", str(self.decimal)) \
             .replace("[MODEL_NAME]", f"'{self.name}'").replace("[LOSS_FUNCTION]", f"'{self.loss}'")
+
         del model_file
 
         passed_flatten = False
+        index_count = 0
         for index, layer in enumerate(self.layers):
 
             if layer.name == "flatten":
                 passed_flatten = True
+                index_count += 1
                 model_template = model_template.replace("[START_PRODUCE]", f"output = output.reshape({layer.units})"
                                                            f"\n        [START_PRODUCE]")
                 continue
@@ -311,6 +314,11 @@ class Model:
                     .replace("[LAYER_TYPE_NAME]", f"'{layer.name}'").replace("[LEAK]", str(layer.leak)) \
                     .replace("[CUTOFF]", str(layer.cutoff)).replace("[ACTIVATION_NAME]", f"'{layer.activation}'") \
                     .replace("[UNITS]", str(layer.units))
+
+            if index == 0:
+                layer_temporary = layer_temporary.replace("[INPUT_SHAPE]", str(layer.units))
+            else:
+                layer_temporary = layer_temporary.replace("[INPUT_SHAPE]", str(self.layers[index - 1].units))
 
             # Neuron generation
             if layer.generation_info[0] == "zero":
@@ -393,40 +401,60 @@ class Model:
                 layer_temporary.replace("[BIAS_GENERATE]", f"([{layer.generation_info[3]} for k in range(self.units)])")
 
             if passed_flatten:
-                model_template = model_template.replace("[START_PRODUCE]", f"output = self.layers[{index}].startForward(output)"
+                model_template = model_template.replace("[START_PRODUCE]", f"output = self.layers[{index - index_count}].startForward(output)"
                                                           f"\n        [START_PRODUCE]")
                 passed_flatten = False
             else:
-                model_template = model_template.replace("[START_PRODUCE]", f"output = self.layers[{index}].forward(output)"
+                model_template = model_template.replace("[START_PRODUCE]", f"output = self.layers[{index - index_count}].forward(output)"
                                                           f"\n        [START_PRODUCE]")
 
-            if len(self.layers) - 1 > index > 0:
+            if len(self.layers) - 1 - index_count > index > 0:
                 model_template = model_template.replace("[BACKPROPAGATE]", f"""[BACKPROPAGATE]\n
             error_sum = []
-            for j in range(self.layers[{index}].units):
+            for j in range(self.layers[{index + 1 - index_count}].units):
                 e_sum = 0
-                for m in range(self.layers[{index + 1}].units):
-                    e_sum += self.layers[{index + 1}].layer[m].weights[j] * error[m]
+                for m in range(self.layers[{index + 2 - index_count}].units):
+                    e_sum += self.layers[{index + 2 - index_count}].layer[m].weights[j] * error[m]
                 error_sum.append(e_sum)
 
             error = Vector(*error_sum)
-            self.layers[i].backward(error, self.layers[{index - 1}].output, lr)\n""")
+            self.layers[{index + 1 - index_count}].backward(error, self.layers[{index - index_count}].output, lr)\n""")
                 model_template = model_template.replace("[LASTPROPAGATE]", f"""[LASTPROPAGATE]\n
         error_sum = []
-        for j in range(self.layers[{index}].units):
+        for j in range(self.layers[{index + 1 - index_count}].units):
             e_sum = 0
-            for m in range(self.layers[{index + 1}].units):
-                e_sum += self.layers[{index + 1}].layer[m].weights[j] * error[m]
+            for m in range(self.layers[{index + 2 - index_count}].units):
+                e_sum += self.layers[{index + 2 - index_count}].layer[m].weights[j] * error[m]
             error_sum.append(e_sum)
 
         error = Vector(*error_sum)
-        self.layers[i].backward(error, self.layers[{index - 1}].output, lr)\n""")
+        self.layers[{index + 1 - index_count}].backward(error, self.layers[{index - index_count}].output, lr)\n""")
+
+            model_template = model_template.replace("[READ]", rf"""
+            header = file.readline().replace("\n", "").split(":")
+            units = int(header[2])
+            layer = Dense{index}(input_shape, units, header[1], template=True)
+            for l in range(units):
+                row = Vector(*[[NUMBER_TYPE](m) for m in file.readline().replace("\n", "").split(":")])
+                layer.layer.append(Neuron{index}(input_shape, template=True))
+                layer.layer[-1].weights = row
+            layer.bias = Vector(*[[NUMBER_TYPE](m) for m in file.readline().replace("\n", "").split(":")])
+            layer.w_matrix = Matrix(*[n.weights for n in layer.layer])
+            self.layers.append(layer)
+            
+            [READ]""")
 
             neuron_header += neuron_temporary
             layer_header += layer_temporary
 
         model_template = model_template.replace("[START_PRODUCE]", "").replace("[BACKPROPAGATE]", "") \
-            .replace("[LASTPROPAGATE]", "")
+            .replace("[LASTPROPAGATE]", "").replace("[READ]", "")
+
+        if self.decimal:
+            model_template = model_template.replace("[NUMBER_TYPE]", "Decimal")
+        else:
+            model_template = model_template.replace("[NUMBER_TYPE]", "float")
+
         makedirs(f"{destination}/{self.name}")
 
         with open(f"{PATH}/exception.py", "r") as file:

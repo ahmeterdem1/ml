@@ -42,8 +42,9 @@ class Dense[LAYER_ORDER](Layer):
 
     def __init__(
                  self,
-                 input_shape: int,
-                 units: int,
+                 input_shape: int = [INPUT_SHAPE],
+                 units: int = [UNITS],
+                 template: bool = False
                  ):
 
         self.name = [LAYER_TYPE_NAME]
@@ -54,13 +55,18 @@ class Dense[LAYER_ORDER](Layer):
         self.leak = [LEAK]
         self.cutoff = [CUTOFF]
 
-        self.layer = [Neuron[LAYER_ORDER](input_shape) for k in range(self.units)]
-        self.w_matrix = Matrix(*[n.weights for n in self.layer])
+        if template:
+            self.next_bias = Vector.zero(self.units, self.decimal)
+            self.output = Vector.zero(units, self.decimal)
+            self.layer = []
+        else:
+            self.layer = [Neuron[LAYER_ORDER](input_shape) for k in range(self.units)]
+            self.w_matrix = Matrix(*[n.weights for n in self.layer])
 
-        self.bias = Vector[BIAS_GENERATE]
+            self.bias = Vector[BIAS_GENERATE]
 
-        self.next_bias = Vector.zero(self.units, self.decimal)
-        self.output = Vector.zero(units, self.decimal)
+            self.next_bias = Vector.zero(self.units, self.decimal)
+            self.output = Vector.zero(units, self.decimal)
 
     def forward(self, input_vector: Vector):
         # This will be called from the "Model" class.

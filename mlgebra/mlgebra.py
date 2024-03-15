@@ -1,4 +1,6 @@
 from model import *
+from time import time
+logger.setLevel(logging.WARN)
 
 mymodel = Model("MyModel")
 
@@ -13,8 +15,19 @@ mymodel.structure([
 #mymodel.loadModel("./MyModel.model")
 
 mymodel.describe()
+m = Matrix.randMint(28, 28, 0, 256)
+v = Vector(1,0,0,0,0,0,0,0,0,0)
+random_x = [m] * 10
+random_y = [v] * 10
+begin = time()
+#for k in range(1000):
+#    model.produce(m)
+for k in range(100):
+    mymodel.train(random_x, random_y)
+end = time()
+print(f"{(end - begin)/100} seconds on average.")
 
-mymodel.compile("/Users/ahmeterdem/Desktop")
+#mymodel.compile("/Users/ahmeterdem/Desktop")
 """
 mnist = "../../vtest/mnist/"
 # ../../vtest/mnist/

@@ -10,10 +10,14 @@ class Neuron[LAYER_ORDER](Neuron):
 
     def __init__(self,
                  w_count: int,
+                 template: bool = False
                  ):
 
         self.next_weights = Vector.zero(w_count, [DECIMAL])
-        self.weights = Vector[WEIGHT_GENERATE]
+        if template:
+            self.weights = Vector()
+        else:
+            self.weights = Vector[WEIGHT_GENERATE]
 
 [NEURON]
 

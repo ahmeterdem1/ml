@@ -1,6 +1,5 @@
 from layer import *
 from os.path import exists, isdir
-from mlgebra import readMnist, integer, PATH
 
 [MODEL]
 
@@ -21,38 +20,10 @@ class Model:
             layer_count = int(general_header[0])
             input_shape = int(general_header[1])
 
-            if general_header[-1] == "1":
-                self.decimal = True
-                for k in range(layer_count):
-                    header = file.readline().replace("\n", "").split(":")
-                    if header[0] == "dense":
-                        units = int(header[2])
-                        layer = Dense(input_shape, units, header[1], template=True)
-                        for l in range(units):
-                            row = Vector(*[Decimal(m) for m in file.readline().replace("\n", "").split(":")])
-                            layer.layer.append(Neuron(input_shape, template=True))
-                            layer.layer[-1].weights = row
-                        layer.bias = Vector(*[Decimal(m) for m in file.readline().replace("\n", "").split(":")])
-                        layer.w_matrix = Matrix(*[n.weights for n in layer.layer])
-                        self.layers.append(layer)
-                    elif header[0] == "flatten":
-                        self.layers.append(Flatten(int(header[-1])))
-            else:
-                self.decimal = False
-                for k in range(layer_count):
-                    header = file.readline().replace("\n", "").split(":")
-                    if header[0] == "dense":
-                        units = int(header[2])
-                        layer = Dense(input_shape, units, header[1], template=True)
-                        for l in range(units):
-                            row = Vector(*[float(m) for m in file.readline().replace("\n", "").split(":")])
-                            layer.layer.append(Neuron(input_shape, template=True))
-                            layer.layer[-1].weights = row
-                        layer.bias = Vector(*[float(m) for m in file.readline().replace("\n", "").split(":")])
-                        layer.w_matrix = Matrix(*[n.weights for n in layer.layer])
-                        self.layers.append(layer)
-                    elif header[0] == "flatten":
-                        self.layers.append(Flatten(int(header[-1])))
+            self.decimal = [DECIMAL]
+
+            [READ]
+
 
     def saveModel(self, path: str):
         if not isdir(path):
@@ -97,7 +68,7 @@ class Model:
                     validation_x: Union[List[Vector], List[Matrix], Matrix, Tensor, None] = None,
                     validation_y: Union[List[Vector], List[Matrix], Matrix, Tensor, None] = None,
                     batch_size: int = 1,
-                    lr: Union[int, float, Decimal]
+                    lr: Union[int, float, Decimal] = 0.001
               ):
 
         count = len(x) // batch_size

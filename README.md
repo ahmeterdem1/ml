@@ -161,13 +161,12 @@ train a "model".
 
 Loads a saved model file. You have to structure your model accordingly before loading the weights. 
 Saved model files only store weights, biases and activation functions. "path" is a complete path
-to your model file including its name. This method is currently not usable for compiled model mirror
-files. 
+to your model file including its name.
 
 ### saveModel(path)
 
 Saves your model to the specified directory. "path" is now a directory. File name is generated with your models
-name. This method is currently not usable for compiled model mirror files. 
+name. 
 
 ### addLayer(layer: Layer)
 
