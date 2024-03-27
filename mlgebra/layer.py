@@ -91,7 +91,7 @@ class Dense(Layer):
             elif bias == "flat":
                 self.bias = Vector.randVfloat(self.units, bias_low, bias_high, self.decimal)
             else:  # includes bias == "constant"
-                self.bias = Vector([bias_low for k in range(self.units)])
+                self.bias = Vector(*[bias_low for k in range(self.units)])
 
             self.next_bias = Vector.zero(self.units, self.decimal)
             self.output = Vector.zero(units, self.decimal)
@@ -100,60 +100,76 @@ class Dense(Layer):
         # This will be called from the "Model" class.
 
         z = self.w_matrix * input_vector + self.bias
-
         if self.activation == "minmax":
-            return z.minmax()
+            z = z.minmax()
+            self.output = z
+            return z
         elif self.activation == "relu":
-            return z.relu(self.leak, self.cutoff)
+            z = z.relu(self.leak, self.cutoff)
+            self.output = z
+            return z
         elif self.activation == "sigmoid":
-            return z.sig(1, self.cutoff)
+            z = z.sig(1, self.cutoff)
+            self.output = z
+            return z
         elif self.activation == "softmax":
-            return z.softmax()
+            z = z.softmax()
+            self.output = z
+            return z
         else:
+            self.output = z
             return z
 
     def startForward(self, input_vector):
         if self.activation == "minmax":
-            return input_vector.minmax()
+            z = input_vector.minmax()
+            self.output = z
+            return z
         elif self.activation == "relu":
-            return input_vector.relu(self.leak, self.cutoff)
+            z = input_vector.relu(self.leak, self.cutoff)
+            self.output = z
+            return z
         elif self.activation == "sigmoid":
-            return input_vector.sig(1, self.cutoff)
+            z = input_vector.sig(1, self.cutoff)
+            self.output = z
+            return z
         elif self.activation == "softmax":
-            return input_vector.softmax()
+            z = input_vector.softmax()
+            self.output = z
+            return z
         else:
+            self.output = input_vector
             return input_vector
 
     def backward(self, deltas: Vector, inputs: Vector, lr: Union[int, float, Decimal]):
         # deltas will have error sums as components.
         # Proper calculations will be done in the "Model" class.
         output = Vector()
-
         if self.activation == "relu":
             for i in range(self.units):
                 delta = deltas[i] * deriv_relu(self.output[i], self.leak, self.cutoff)
                 output.append(delta)
-                self.layer[i].next_weights = self.layer[i].weights - lr * delta * inputs[i]
+                self.layer[i].replaceWeights(self.layer[i].weights - lr * delta * inputs[i])
         elif self.activation == "sigmoid":
             for i in range(self.units):
                 delta = deltas[i] * self.output[i] * (1 - self.output[i])
                 output.append(delta)
-                self.layer[i].next_weights = self.layer[i].weights - lr * delta * inputs[i]
+                self.layer[i].replaceWeights(self.layer[i].weights - lr * delta * inputs[i])
+
         self.next_bias = self.bias - deltas * lr
         return output
 
     def startBackward(self, deltas: Vector, inputs: Vector, lr: Union[int, float, Decimal]):
         for i in range(self.units):
-            self.layer[i].next_weights = self.layer[i].weights - lr * deltas[i] * inputs[i]
+            self.layer[i].replaceWeights(self.layer[i].weights - lr * deltas[i] * inputs[i])
         self.next_bias = self.bias - deltas * lr
         return deltas
 
     def update(self):
         vlist = []
-        for neuron in self.layer:
-            neuron.weights = neuron.next_weights
-            vlist.append(neuron.next_weights)
-            neuron.next_weights = Vector.zero(self.units, self.decimal)
+        for i in range(len(self.layer)):
+            self.layer[i].update()
+            vlist.append(self.layer[i].weights)
         self.w_matrix = Matrix(*vlist)
         self.bias = self.next_bias
 

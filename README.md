@@ -2,16 +2,16 @@
 
 A machine learning tool for Python, in Python.
 
-## New code structure
+## Update Notes on 1.1.0
 
-I have prepared a new code structure for this library.
-It is much more readable now. Layout is spread to 
-different files which are imported as a chain. "Node" name
-is now "Neuron". Layers are generated on a base class. I have
-included only the Dense layers for now. Model imports layers
-and neurons, and manages the usage of them.
+This update mainly has bug fixes. Other than that, the library now has 3 different
+optimizer/loss function combinations. "usgd", which stands for unit stochastic 
+gradient descent, passes unit vector of the errors/deltas at each iteration. This
+is to prevent exploding gradient problems. "mse", which stands for mean squarred
+error, is just gradient descent with MSE loss.
 
-Problems stated in the last commit is now solved.
+Loss functions are now carried to another file. New structure is also included to
+the compiler. It still may be buggy. 
 
 ## Project details
 
@@ -69,6 +69,36 @@ class files do not require much of the information given in the original code.
 Deeper explanations for the Dynamic usage is given below.
 
 <hr>
+
+
+## Example Usage
+
+````python
+
+from mlgebra import *
+
+model = Model("MyModel", "usgd")
+
+model.structure([
+    Flatten(784),
+    Dense(784, 784, "minmax", bias="constant", bias_low=0.5),
+    Dense(784, 32, "relu", bias="constant", bias_low=0.5),
+    Dense(32, 16, "relu", bias="constant", bias_low=0.5),
+    Dense(16, 10, "softmax", bias="constant", bias_low=0.5)
+])
+
+mnist = "DIR_TO_MNIST_DATASET/"
+
+x_train, y_train, x_test, y_test = readMnist(mnist + "train-images.idx3-ubyte",
+                                             mnist + "train-labels.idx1-ubyte",
+                                             mnist + "t10k-images.idx3-ubyte",
+                                             mnist + "t10k-labels.idx1-ubyte")
+
+model.train(x_train, y_train, lr=0.0001)
+
+model.saveModel("PATH_TO_TARGET_DIR")
+
+````
 
 ## Neuron
 

@@ -70,3 +70,38 @@ mymodel.structure([
 
 mymodel.describe()
 mymodel.compile("/Users/ahmeterdem/Desktop")"""
+
+from model import *
+
+model = Model("MyModel3", "usgd")
+
+model.structure([
+    Flatten(784),
+    Dense(784, 784, "minmax", bias="constant", bias_low=0.5),
+    Dense(784, 32, "relu", bias="constant", bias_low=0.5),
+    Dense(32, 16, "relu", bias="constant", bias_low=0.5),
+    Dense(16, 10, "softmax", bias="constant", bias_low=0.5)
+])
+
+mnist = "../../vtest/mnist/"
+# ../../vtest/mnist/
+
+x_train, y_train, x_test, y_test = readMnist(mnist + "train-images.idx3-ubyte",
+                                             mnist + "train-labels.idx1-ubyte",
+                                             mnist + "t10k-images.idx3-ubyte",
+                                             mnist + "t10k-labels.idx1-ubyte")
+
+
+model.train(x_train, y_train, lr=0.0001)
+
+count = 0
+for k in range(100):
+    v = model.produce(x_test[k])
+    print(v)
+    maxima = maximum(v)
+    index = v.values.index(maxima)
+    if y_test[k][index] == 1:
+        count += 1
+
+print(f"Model guessed {count} images correctly in the first 100 imageset.")
+model.saveModel("/Users/ahmeterdem/Desktop/code/test_models")

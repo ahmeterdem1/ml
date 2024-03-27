@@ -1,4 +1,5 @@
 from .layer import *
+from .losses import *
 from os.path import exists, isdir, dirname, abspath
 from os import makedirs
 
@@ -84,7 +85,7 @@ def readMnist(path1, path2, path3, path4, decimal: bool = False):
 class Model:
 
     def __init__(self, name: str,
-                       loss: str = "crossentropy",
+                       loss: str = "crossentropy",  # usgd -> Unit stochastic gradient descent, mse -> SGD with MSE
                        decimal: bool = False):
         self.name = name
         self.loss = loss.lower()
@@ -170,37 +171,41 @@ class Model:
                 output = self.layers[k].forward(output)
         return output
 
-    def evaluate(self, x: Union[List[Vector], List[Matrix], Matrix, Tensor],
-                       y: Union[List[Vector], List[Matrix], Matrix, Tensor]):
-        if self.loss == "crossentropy":
-            error = Vector.zero(self.layers[-1].units, self.decimal)
-
-            for k in range(len(x)):
-                error += y[k].dot(Vector(*[ln(k) for k in self.produce(x[k]).values]))
-            error /= len(x)
-
-            return -error.cumsum()
+    def evaluate(self, x: Union[List[Vector], List[Matrix]],
+                       y: Union[List[Vector], List[Matrix]]):
+        if self.loss == "crossentropy" or self.loss == "usgd":
+            return SparseCategoricalCrossEntropy(x, y)
+        elif self.loss == "mse":
+            return MSE(x, y)
 
 
     def train(self, x: Union[List[Vector], List[Matrix], Matrix, Tensor],
                     y: Union[List[Vector], List[Matrix], Matrix, Tensor],
-                    validation_x: Union[List[Vector], List[Matrix], Matrix, Tensor, None] = None,
-                    validation_y: Union[List[Vector], List[Matrix], Matrix, Tensor, None] = None,
+                    validation_x: Union[List[Vector], List[Matrix], None] = None,
+                    validation_y: Union[List[Vector], List[Matrix], None] = None,
                     batch_size: int = 1,
                     lr: Union[int, float, Decimal] = 0.01
               ):
 
         if self.loss == "crossentropy":
-            count = len(x) // batch_size
+            N = len(x)
+            count = N // batch_size
             for k in range(count - 1):
                 error = Vector.zero(self.layers[-1].units, self.decimal)
 
-                logger.info(f"{(k / count):.2f}% done.")
-                for l in range(batch_size):
-                    error += y[k * batch_size + l] - self.produce(x[k * batch_size + l])
+                if k * batch_size % (N // 100) == 0:
+                    logger.info(f"{(k / count) * 100:.2f}% done.")
+                #for l in range(batch_size):
+                #    error += y[k * batch_size + l] - self.produce(x[k * batch_size + l])
 
-                error /= batch_size
+                error += gradCrossEntropy(y=y[k * batch_size:(k + 1) * batch_size],
+                                 predictions=[self.produce(x[k * batch_size + l]) for l in range(batch_size)])
+
+                #error /= batch_size
                 error = self.layers[-1].startBackward(error, self.layers[-2].output, lr)
+                if error != error:
+                    logger.warning(f"Error is calculated to be NaN, force-ending the training at batch {k}.")
+                    return
 
                 for i in range(len(self.layers) - 2, 0, -1):
                     error_sum = []
@@ -214,7 +219,10 @@ class Model:
                             error_sum.append(e_sum)
 
                         error = Vector(*error_sum)
-                        self.layers[i].backward(error, self.layers[i - 1].output, lr)
+                        if error != error:
+                            logger.warning(f"Error is calculated to be NaN, force-ending the training at batch {k}.")
+                            return
+                        error = self.layers[i].backward(error, self.layers[i - 1].output, lr)
 
                 for i in range(1, len(self.layers)):
                     if self.layers[i - 1].name != "flatten":
@@ -225,11 +233,18 @@ class Model:
 
             # Last Batch
             error = Vector.zero(self.layers[-1].units, self.decimal)
-            for k in range(len(x) - (count - 1) * batch_size):
-                error += y[(count - 1) * batch_size + k] - self.produce(x[(count - 1) * batch_size + k])
+            #for k in range(len(x) - (count - 1) * batch_size):
+            #    error += y[(count - 1) * batch_size + k] - self.produce(x[(count - 1) * batch_size + k])
 
-            error /= len(x) - (count - 1) * batch_size
+            error += gradCrossEntropy(y=y[(count - 1) * batch_size:],
+                                      predictions=[self.produce(x[(count - 1) * batch_size + l]) for l in range(len(x) - (count - 1) * batch_size)])
+
+            #error /= len(x) - (count - 1) * batch_size
             error = self.layers[-1].startBackward(error, self.layers[-2].output, lr)
+            if error != error:
+                logger.warning(f"Error is calculated to be NaN, force-ending the training at last batch.")
+                return
+
             for i in range(len(self.layers) - 2, 0, -1):
                 error_sum = []
                 if self.layers[i - 1].name == "flatten":
@@ -242,7 +257,10 @@ class Model:
                         error_sum.append(e_sum)
 
                     error = Vector(*error_sum)
-                    self.layers[i].backward(error, self.layers[i - 1].output, lr)
+                    if error != error:
+                        logger.warning(f"Error is calculated to be NaN, force-ending the training at last batch.")
+                        return
+                    error = self.layers[i].backward(error, self.layers[i - 1].output, lr)
 
             for i in range(1, len(self.layers)):
                 if self.layers[i - 1].name != "flatten":
@@ -250,6 +268,174 @@ class Model:
 
             if validation_x:
                 logger.info(f"Error at last batch with {self.loss}: {self.evaluate(validation_x, validation_y)}")
+
+        elif self.loss == "usgd":
+            N = len(x)
+            count = N // batch_size
+            for k in range(count - 1):
+                error = Vector.zero(self.layers[-1].units, self.decimal)
+
+                if k * batch_size % (N // 100) == 0:
+                    logger.info(f"{(k / count) * 100:.2f}% done.")
+                #for l in range(batch_size):
+                #    error += y[k * batch_size + l] - self.produce(x[k * batch_size + l])
+
+                error += gradCrossEntropy(y=y[k * batch_size:(k + 1) * batch_size],
+                                          predictions=[self.produce(x[k * batch_size + l]) for l in range(batch_size)])
+
+                #error /= batch_size
+                error = self.layers[-1].startBackward(error.unit(), self.layers[-2].output, lr)
+                if error != error:
+                    logger.warning(f"Error is calculated to be NaN, force-ending the training at batch {k}.")
+                    return
+
+                for i in range(len(self.layers) - 2, 0, -1):
+                    error_sum = []
+                    if self.layers[i - 1].name == "flatten":
+                        continue
+                    elif self.layers[i].name == "dense" and self.layers[i + 1].name == "dense":
+                        for j in range(self.layers[i].units):
+                            e_sum = 0
+                            for m in range(self.layers[i + 1].units):
+                                e_sum += self.layers[i + 1].layer[m].weights[j] * error[m]
+                            error_sum.append(e_sum)
+
+                        error = Vector(*error_sum)
+                        if error != error:
+                            logger.warning(f"Error is calculated to be NaN, force-ending the training at batch {k}.")
+                            return
+                        error = self.layers[i].backward(error.unit(), self.layers[i - 1].output, lr)
+
+                for i in range(1, len(self.layers)):
+                    if self.layers[i - 1].name != "flatten":
+                        self.layers[i].update()
+
+                if validation_x:
+                    logger.info(f"Error at batch {k} with {self.loss}: {self.evaluate(validation_x, validation_y)}")
+
+            # Last Batch
+            error = Vector.zero(self.layers[-1].units, self.decimal)
+            #for k in range(len(x) - (count - 1) * batch_size):
+            #    error += y[(count - 1) * batch_size + k] - self.produce(x[(count - 1) * batch_size + k])
+
+            error += gradCrossEntropy(y=y[(count - 1) * batch_size:],
+                                      predictions=[self.produce(x[(count - 1) * batch_size + l]) for l in
+                                                   range(len(x) - (count - 1) * batch_size)])
+
+            #error /= len(x) - (count - 1) * batch_size
+            if error != error:
+                logger.warning(f"Error is calculated to be NaN, force-ending the training at last batch.")
+                return
+
+            error = self.layers[-1].startBackward(error.unit(), self.layers[-2].output, lr)
+            for i in range(len(self.layers) - 2, 0, -1):
+                error_sum = []
+                if self.layers[i - 1].name == "flatten":
+                    continue
+                elif self.layers[i].name == "dense" and self.layers[i + 1].name == "dense":
+                    for j in range(self.layers[i].units):
+                        e_sum = 0
+                        for m in range(self.layers[i + 1].units):
+                            e_sum += self.layers[i + 1].layer[m].weights[j] * error[m]
+                        error_sum.append(e_sum)
+
+                    error = Vector(*error_sum)
+                    if error != error:
+                        logger.warning(f"Error is calculated to be NaN, force-ending the training at last batch.")
+                        return
+                    error = self.layers[i].backward(error.unit(), self.layers[i - 1].output, lr)
+
+            for i in range(1, len(self.layers)):
+                if self.layers[i - 1].name != "flatten":
+                    self.layers[i].update()
+
+            if validation_x:
+                logger.info(f"Error at last batch with {self.loss}: {self.evaluate(validation_x, validation_y)}")
+
+        elif self.loss == "mse":
+            N = len(x)
+            count = N // batch_size
+            for k in range(count - 1):
+                error = Vector.zero(self.layers[-1].units, self.decimal)
+
+                if k * batch_size % (N // 100) == 0:
+                    logger.info(f"{(k / count) * 100:.2f}% done.")
+
+                #produced = [self.produce(x[k * batch_size + l]) for l in range(batch_size)]
+                error += gradMSE(y=y[k * batch_size:(k + 1) * batch_size],
+                                 predictions=[self.produce(x[k * batch_size + l]) for l in range(batch_size)])
+                #for l in range(batch_size):
+                #    error += y[k * batch_size + l] - self.produce(x[k * batch_size + l])
+
+                #error /= batch_size
+                error = self.layers[-1].startBackward(error, self.layers[-2].output, lr)
+                if error != error:
+                    logger.warning(f"Error is calculated to be NaN, force-ending the training at batch {k}.")
+                    return
+
+                for i in range(len(self.layers) - 2, 0, -1):
+                    error_sum = []
+                    if self.layers[i - 1].name == "flatten":
+                        continue
+                    elif self.layers[i].name == "dense" and self.layers[i + 1].name == "dense":
+                        for j in range(self.layers[i].units):
+                            e_sum = 0
+                            for m in range(self.layers[i + 1].units):
+                                e_sum += self.layers[i + 1].layer[m].weights[j] * error[m]
+                            error_sum.append(e_sum)
+
+                        error = Vector(*error_sum)
+                        if error != error:
+                            logger.warning(f"Error is calculated to be NaN, force-ending the training at batch {k}.")
+                            return
+                        error = self.layers[i].backward(error, self.layers[i - 1].output, lr)
+
+                for i in range(1, len(self.layers)):
+                    if self.layers[i - 1].name != "flatten":
+                        self.layers[i].update()
+
+                if validation_x:
+                    logger.info(f"Error at batch {k} with {self.loss}: {self.evaluate(validation_x, validation_y)}")
+
+            # Last Batch
+            error = Vector.zero(self.layers[-1].units, self.decimal)
+            #for k in range(len(x) - (count - 1) * batch_size):
+            #    error += y[(count - 1) * batch_size + k] - self.produce(x[(count - 1) * batch_size + k])
+
+            error += gradMSE(y=y[(count - 1) * batch_size:],
+                                      predictions=[self.produce(x[(count - 1) * batch_size + l]) for l in
+                                                   range(len(x) - (count - 1) * batch_size)])
+
+            #error /= len(x) - (count - 1) * batch_size
+            error = self.layers[-1].startBackward(error, self.layers[-2].output, lr)
+            if error != error:
+                logger.warning(f"Error is calculated to be NaN, force-ending the training at last batch.")
+                return
+
+            for i in range(len(self.layers) - 2, 0, -1):
+                error_sum = []
+                if self.layers[i - 1].name == "flatten":
+                    continue
+                elif self.layers[i].name == "dense" and self.layers[i + 1].name == "dense":
+                    for j in range(self.layers[i].units):
+                        e_sum = 0
+                        for m in range(self.layers[i + 1].units):
+                            e_sum += self.layers[i + 1].layer[m].weights[j] * error[m]
+                        error_sum.append(e_sum)
+
+                    error = Vector(*error_sum)
+                    if error != error:
+                        logger.warning(f"Error is calculated to be NaN, force-ending the training at last batch.")
+                        return
+                    error = self.layers[i].backward(error, self.layers[i - 1].output, lr)
+
+            for i in range(1, len(self.layers)):
+                if self.layers[i - 1].name != "flatten":
+                    self.layers[i].update()
+
+            if validation_x:
+                logger.info(f"Error at last batch with {self.loss}: {self.evaluate(validation_x, validation_y)}")
+
 
     def describe(self):
         print(f"Model: {self.name}")
@@ -408,7 +594,8 @@ class Model:
                 model_template = model_template.replace("[START_PRODUCE]", f"output = self.layers[{index - index_count}].forward(output)"
                                                           f"\n        [START_PRODUCE]")
 
-            if len(self.layers) - 1 - index_count > index > 0:
+            if len(self.layers) - 1 - index_count > index > 0 and self.loss == "crossentropy":
+                model_template = model_template.replace("[GRAD]", "gradCrossEntropy").replace("[LAST_GRAD]", "gradCrossEntropy")
                 model_template = model_template.replace("[BACKPROPAGATE]", f"""[BACKPROPAGATE]\n
             error_sum = []
             for j in range(self.layers[{index + 1 - index_count}].units):
@@ -428,7 +615,55 @@ class Model:
             error_sum.append(e_sum)
 
         error = Vector(*error_sum)
-        self.layers[{index + 1 - index_count}].backward(error, self.layers[{index - index_count}].output, lr)\n""")
+        error = self.layers[{index + 1 - index_count}].backward(error, self.layers[{index - index_count}].output, lr)\n""")
+
+            if len(self.layers) - 1 - index_count > index > 0 and self.loss == "usgd":
+                model_template = model_template.replace("[GRAD]", "gradCrossEntropy").replace("[LAST_GRAD]",
+                                                                                              "gradCrossEntropy")
+                model_template = model_template.replace("[BACKPROPAGATE]", f"""[BACKPROPAGATE]\n
+            error_sum = []
+            for j in range(self.layers[{index + 1 - index_count}].units):
+                e_sum = 0
+                for m in range(self.layers[{index + 2 - index_count}].units):
+                    e_sum += self.layers[{index + 2 - index_count}].layer[m].weights[j] * error[m]
+                error_sum.append(e_sum)
+
+            error = Vector(*error_sum)
+            self.layers[{index + 1 - index_count}].backward(error.unit(), self.layers[{index - index_count}].output, lr)\n""")
+                model_template = model_template.replace("[LASTPROPAGATE]", f"""[LASTPROPAGATE]\n
+        error_sum = []
+        for j in range(self.layers[{index + 1 - index_count}].units):
+            e_sum = 0
+            for m in range(self.layers[{index + 2 - index_count}].units):
+                e_sum += self.layers[{index + 2 - index_count}].layer[m].weights[j] * error[m]
+            error_sum.append(e_sum)
+
+        error = Vector(*error_sum)
+        error = self.layers[{index + 1 - index_count}].backward(error.unit(), self.layers[{index - index_count}].output, lr)\n""")
+
+            if len(self.layers) - 1 - index_count > index > 0 and self.loss == "mse":
+                model_template = model_template.replace("[GRAD]", "gradMSE").replace("[LAST_GRAD]",
+                                                                                                  "gradMSE")
+                model_template = model_template.replace("[BACKPROPAGATE]", f"""[BACKPROPAGATE]\n
+            error_sum = []
+            for j in range(self.layers[{index + 1 - index_count}].units):
+                e_sum = 0
+                for m in range(self.layers[{index + 2 - index_count}].units):
+                    e_sum += self.layers[{index + 2 - index_count}].layer[m].weights[j] * error[m]
+                error_sum.append(e_sum)
+
+            error = Vector(*error_sum)
+            self.layers[{index + 1 - index_count}].backward(error.unit(), self.layers[{index - index_count}].output, lr)\n""")
+                model_template = model_template.replace("[LASTPROPAGATE]", f"""[LASTPROPAGATE]\n
+        error_sum = []
+        for j in range(self.layers[{index + 1 - index_count}].units):
+            e_sum = 0
+            for m in range(self.layers[{index + 2 - index_count}].units):
+                e_sum += self.layers[{index + 2 - index_count}].layer[m].weights[j] * error[m]
+            error_sum.append(e_sum)
+
+        error = Vector(*error_sum)
+        error = self.layers[{index + 1 - index_count}].backward(error.unit(), self.layers[{index - index_count}].output, lr)\n""")
 
             model_template = model_template.replace("[READ]", rf"""
             header = file.readline().replace("\n", "").split(":")
@@ -463,6 +698,13 @@ class Model:
         with open(f"{destination}/{self.name}/exception.py", "w") as file:
             file.write(exc)
 
+        with open(f"{PATH}/losses.py", "r") as file:
+            exc = file.read()
+
+        with open(f"{destination}/{self.name}/losses.py", "w") as file:
+            file.write(exc)
+        del exc
+
         with open(f"{destination}/{self.name}/neuron.py", "w") as file:
             file.write(neuron_header)
 
@@ -473,5 +715,4 @@ class Model:
             file.write(model_header + model_template)
 
         logger.info(f"Model compiled and saved at {destination}/{self.name}")
-
 

@@ -14,10 +14,19 @@ class Neuron[LAYER_ORDER](Neuron):
                  ):
 
         self.next_weights = Vector.zero(w_count, [DECIMAL])
+        self.w_count = w_count
+
         if template:
             self.weights = Vector()
         else:
             self.weights = Vector[WEIGHT_GENERATE]
+
+    def update(self):
+        self.weights = self.next_weights
+        self.next_weights = Vector.zero(self.w_count, [DECIMAL])
+
+    def replaceWeights(self, input: Vector):
+        self.next_weights = input
 
 [NEURON]
 

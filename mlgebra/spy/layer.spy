@@ -71,10 +71,14 @@ class Dense[LAYER_ORDER](Layer):
     def forward(self, input_vector: Vector):
         # This will be called from the "Model" class.
         z = self.w_matrix * input_vector + self.bias
-        return z[ACTIVATION]
+        z = z[ACTIVATION]
+        self.output = z
+        return z
 
     def startForward(self, input_vector):
-        return input_vector[ACTIVATION]
+        z = input_vector[ACTIVATION]
+        self.output = z
+        return z
 
     def backward(self, deltas: Vector, inputs: Vector, lr: Union[int, float, Decimal]):
         # deltas will have error sums as components.
@@ -83,22 +87,21 @@ class Dense[LAYER_ORDER](Layer):
         for i in range(self.units):
             delta = deltas[i] * [DERIVATIVE]
             output.append(delta)
-            self.layer[i].next_weights = self.layer[i].weights - lr * delta * inputs[i]
+            self.layer[i].replaceWeights(self.layer[i].weights - lr * delta * inputs[i])
         self.next_bias = self.bias - deltas * lr
         return output
 
     def startBackward(self, deltas: Vector, inputs: Vector, lr: Union[int, float, Decimal]):
         for i in range(self.units):
-            self.layer[i].next_weights = self.layer[i].weights - lr * deltas[i] * inputs[i]
+            self.layer[i].replaceWeights(self.layer[i].weights - lr * delta * inputs[i])
         self.next_bias = self.bias - deltas * lr
         return deltas
 
     def update(self):
         vlist = []
-        for neuron in self.layer:
-            neuron.weights = neuron.next_weights
-            vlist.append(neuron.next_weights)
-            neuron.next_weights = Vector.zero(self.units, self.decimal)
+        for i in range(len(self.layer)):
+            self.layer[i].update()
+            vlist.append(self.layer[i].weights)
         self.w_matrix = Matrix(*vlist)
         self.bias = self.next_bias
 

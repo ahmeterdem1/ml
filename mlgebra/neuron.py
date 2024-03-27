@@ -10,6 +10,9 @@ class Neuron:
                  template: bool = False):
 
         self.next_weights = Vector.zero(w_count, decimal)
+        self.w_count = w_count
+        self.decimal = decimal
+
 
         if template:
             self.weights = Vector()
@@ -36,3 +39,9 @@ class Neuron:
             else:
                 self.weights = Vector(*[a for k in range(w_count)])
 
+    def update(self):
+        self.weights = self.next_weights
+        self.next_weights = Vector.zero(self.w_count, self.decimal)
+
+    def replaceWeights(self, input: Vector):
+        self.next_weights = input

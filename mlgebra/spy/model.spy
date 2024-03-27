@@ -1,4 +1,5 @@
 from layer import *
+from losses import *
 from os.path import exists, isdir
 
 [MODEL]
@@ -74,10 +75,12 @@ class Model:
         count = len(x) // batch_size
         for k in range(count - 1):
             error = Vector.zero(self.layers[-1].units, self.decimal)
-            for l in range(batch_size):
-                error += y[k * batch_size + l] - self.produce(x[k * batch_size + l])
+            #for l in range(batch_size):
+            #    error += y[k * batch_size + l] - self.produce(x[k * batch_size + l])
 
-            error /= batch_size
+            #error /= batch_size
+            error = [GRAD](y=y[k * batch_size:(k + 1) * batch_size],
+                                 predictions=[self.produce(x[k * batch_size + l]) for l in range(batch_size)])
             error = self.layers[-1].startBackward(error, self.layers[-2].output, lr)
 
             [BACKPROPAGATE]
@@ -91,10 +94,12 @@ class Model:
 
         # Last Batch
         error = Vector.zero(self.layers[-1].units, self.decimal)
-        for k in range(len(x) - (count - 1) * batch_size):
-            error += y[(count - 1) * batch_size + k] - self.produce(x[(count - 1) * batch_size + k])
+        #for k in range(len(x) - (count - 1) * batch_size):
+        #    error += y[(count - 1) * batch_size + k] - self.produce(x[(count - 1) * batch_size + k])
 
-        error /= len(x) - (count - 1) * batch_size
+        #error /= len(x) - (count - 1) * batch_size
+        error = [LAST_GRAD](y=y[(count - 1) * batch_size:],
+                                      predictions=[self.produce(x[(count - 1) * batch_size + l]) for l in range(len(x) - (count - 1) * batch_size)])
         error = self.layers[-1].startBackward(error, self.layers[-2].output, lr)
 
         [LASTPROPAGATE]

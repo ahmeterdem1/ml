@@ -5,6 +5,7 @@ mlgebra/MLgebra.py
 mlgebra/__init__.py
 mlgebra/exception.py
 mlgebra/layer.py
+mlgebra/losses.py
 mlgebra/mlgebra.py
 mlgebra/model.py
 mlgebra/neuron.py
